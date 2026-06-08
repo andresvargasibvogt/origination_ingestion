@@ -1,0 +1,78 @@
+# BOA relevance calibration set.
+#
+# Each entry is a (section, subsection, departamento, expected) tuple curated
+# by hand from real BOA dates 2026-06-01..2026-06-08 against the filter:
+#
+#   section: V
+#   subsection: b
+#   departamento_name: "DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO"
+#
+# Positives must match; negatives must NOT match. Drift on either side fails
+# the test.
+
+positives:
+  - section: "V"
+    subsection: "b"
+    departamento: "DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO"
+    note: "exact-match canonical positive"
+  - section: "V"
+    subsection: "b"
+    departamento: "  DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO  "
+    note: "whitespace tolerance"
+  - section: "V"
+    subsection: "b"
+    departamento: "departamento de economía, competitividad y empleo"
+    note: "case-insensitive match"
+
+negatives:
+  # Wrong subsection — V.a (Nombramientos / Oposiciones) and V.c (Subastas, etc.)
+  - section: "V"
+    subsection: "a"
+    departamento: "DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO"
+    note: "right departamento + V section, but wrong subsection"
+  - section: "V"
+    subsection: "c"
+    departamento: "DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO"
+    note: "right departamento + V section, but V.c not V.b"
+
+  # Wrong section
+  - section: "III"
+    subsection: null
+    departamento: "DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO"
+    note: "same departamento publishes in III too — must NOT match"
+  - section: "I"
+    subsection: null
+    departamento: "DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO"
+    note: "Disposiciones Generales never our target"
+
+  # Wrong departamento (real V.b emisores from 2026-06-05)
+  - section: "V"
+    subsection: "b"
+    departamento: "DEPARTAMENTO DE AGRICULTURA, GANADERÍA Y ALIMENTACIÓN"
+    note: "V.b but agriculture, not Economía"
+  - section: "V"
+    subsection: "b"
+    departamento: "DEPARTAMENTO DE EDUCACIÓN, CIENCIA Y UNIVERSIDADES"
+    note: "V.b but education"
+  - section: "V"
+    subsection: "b"
+    departamento: "AYUNTAMIENTO DE QUICENA"
+    note: "V.b but municipal authority"
+  - section: "V"
+    subsection: "b"
+    departamento: "AYUNTAMIENTO DE ÉPILA"
+    note: "V.b but municipal authority"
+  - section: "V"
+    subsection: "b"
+    departamento: "VICEPRESIDENCIA DEL GOBIERNO Y DEPARTAMENTO DE PRESIDENCIA, ECONOMÍA Y JUSTICIA"
+    note: "V.b — name contains 'economía' but is the vice-presidency, not our target"
+
+  # Empty / malformed
+  - section: ""
+    subsection: ""
+    departamento: ""
+    note: "fully empty input"
+  - section: "V"
+    subsection: ""
+    departamento: "DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO"
+    note: "missing subsection should NOT match (rule requires V.b)"

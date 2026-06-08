@@ -1,0 +1,12 @@
+# BOA relevance rules — section + subsection + departamento name.
+#
+# Filter is structural (matches BOA's own breadcrumb on boa.aragon.es), not
+# title-keyword. Editable without rebuilding the container image — the file
+# ships in the package and is loaded at runtime by RelevanceConfig.load().
+#
+# An item passes if ANY rule matches its (section, subsection, departamento_name).
+
+rules:
+  - section: "V"
+    subsection: "b"
+    departamento_name: "DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO"
