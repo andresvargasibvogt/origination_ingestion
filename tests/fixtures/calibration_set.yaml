@@ -1,0 +1,267 @@
+# Calibration fixture for the section + departamento relevance filter.
+#
+# Section codigos use the SAME format returned by the BOE Datos Abiertos
+# JSON sumario API (verified live 2026-06-02):
+#
+#   "1"   I.   Disposiciones generales
+#   "2A"  II.A Nombramientos
+#   "2B"  II.B Oposiciones y concursos
+#   "3"   III. Otras disposiciones        ← only positives live here today
+#   "4"   IV.  Administración de Justicia
+#   "5A"  V.A  Contratación del Sector Público
+#   "5B"  V.B  Otros anuncios oficiales
+#   "5C"  V.C  Anuncios particulares
+#
+# Positives must match the YAML's current rules. Today: only Section 3 +
+# MITECO codigo 9575. If we add more rules later (e.g. Section 5B +
+# Delegación del Gobierno for info-pública anuncios), the entries currently
+# under "negatives_against_current_filter_but_possibly_positives_later"
+# should move up.
+
+positives:
+
+  # === Real items verified from boe.es/datosabiertos sumario 2026-06-01 ===
+  # All four Helena Solar items: same day, same departamento, same act type.
+  - identifier: BOE-A-2026-11771
+    section: "3"
+    departamento:
+      codigo: "9575"
+      nombre: "MINISTERIO PARA LA TRANSICIÓN ECOLÓGICA Y EL RETO DEMOGRÁFICO"
+    titulo: >-
+      Resolución de 15 de mayo de 2026, de la Dirección General de Política
+      Energética y Minas, por la que se otorga... Helena Solar 3 de 44,68 MW...
+    expected: true
+
+  - identifier: BOE-A-2026-11772
+    section: "3"
+    departamento:
+      codigo: "9575"
+      nombre: "MINISTERIO PARA LA TRANSICIÓN ECOLÓGICA Y EL RETO DEMOGRÁFICO"
+    titulo: >-
+      Resolución de 15 de mayo de 2026, de la Dirección General de Política
+      Energética y Minas... Helena Solar 4 de 44,68 MW...
+    expected: true
+
+  - identifier: BOE-A-2026-11773
+    section: "3"
+    departamento:
+      codigo: "9575"
+      nombre: "MINISTERIO PARA LA TRANSICIÓN ECOLÓGICA Y EL RETO DEMOGRÁFICO"
+    titulo: >-
+      Resolución de 15 de mayo de 2026... Helena Solar 5 de 41,24 MW...
+    expected: true
+
+  - identifier: BOE-A-2026-11774
+    section: "3"
+    departamento:
+      codigo: "9575"
+      nombre: "MINISTERIO PARA LA TRANSICIÓN ECOLÓGICA Y EL RETO DEMOGRÁFICO"
+    titulo: >-
+      Resolución de 15 de mayo de 2026... Helena Solar 6 de 37,81 MW...
+    expected: true
+
+  # === Historical positives from the deep-dive §4b ===
+  - identifier: BOE-A-2024-15085
+    section: "3"
+    departamento:
+      codigo: "9575"
+      nombre: "Ministerio para la Transición Ecológica y el Reto Demográfico"
+    titulo: >-
+      Resolución de 28 de junio de 2024, de la DGPEM, por la que se modifica
+      la AAP y se otorga AAC + DUP del proyecto "Avutarda Solar" de 50,09 MW.
+    expected: true
+
+  - identifier: BOE-A-2025-17914
+    section: "3"
+    departamento:
+      codigo: "9575"
+      nombre: "Ministerio para la Transición Ecológica y el Reto Demográfico"
+    titulo: >-
+      Resolución de 3 de agosto de 2025, de la DGCEA, por la que se formula
+      DIA del proyecto fotovoltaico "Los Vientos I" de 54,6 MW.
+    expected: true
+
+  - identifier: BOE-A-2024-26100
+    section: "3"
+    departamento:
+      codigo: "9575"
+      nombre: "Ministerio para la Transición Ecológica y el Reto Demográfico"
+    titulo: >-
+      Resolución por la que se desestima la solicitud de AAP del proyecto
+      V Solar 1 de 246,23 MW.
+    expected: true
+
+  - identifier: BOE-A-2024-13559
+    section: "3"
+    departamento:
+      codigo: "9575"
+      nombre: "Ministerio para la Transición Ecológica y el Reto Demográfico"
+    titulo: >-
+      Resolución DGCEA — DIA desfavorable del proyecto fotovoltaico
+      "El Espino" de 121,5 MWp.
+    expected: true
+
+  - identifier: BOE-A-2024-17712
+    section: "3"
+    departamento:
+      codigo: "9575"
+      nombre: "Ministerio para la Transición Ecológica y el Reto Demográfico"
+    titulo: >-
+      Acuerdo del Consejo de Ministros por el que se autoriza la instalación
+      fotovoltaica "La Vega" de 109,26 MW.
+    expected: true
+
+  # Other-topic MITECO Section 3 item — under the current structural filter
+  # this still passes (we don't filter on title). Document the trade-off.
+  - identifier: BOE-A-2026-9999-WATER
+    section: "3"
+    departamento:
+      codigo: "9575"
+      nombre: "MINISTERIO PARA LA TRANSICIÓN ECOLÓGICA Y EL RETO DEMOGRÁFICO"
+    titulo: >-
+      Resolución por la que se aprueba el Plan Hidrológico de Cuenca 2026-2030.
+    expected: true
+
+  # === MPTYMD (codigo 9593) positives ===
+  # Real item verified from boe.es sumario 2026-06-01: a Delegación del
+  # Gobierno expropriation notice (levantamiento de actas previas).
+  - identifier: BOE-B-2026-18121
+    section: "5B"
+    departamento:
+      codigo: "9593"
+      nombre: "MINISTERIO DE POLÍTICA TERRITORIAL Y MEMORIA DEMOCRÁTICA"
+    titulo: >-
+      Anuncio de la Delegación del Gobierno en Castilla y León por el que se
+      convoca para el levantamiento de actas previas a la ocupación...
+    expected: true
+
+  # Synthetic MPTYMD Section 3 — any Política Territorial disposition.
+  - identifier: BOE-A-2026-9999-MPTYMD-3
+    section: "3"
+    departamento:
+      codigo: "9593"
+      nombre: "MINISTERIO DE POLÍTICA TERRITORIAL Y MEMORIA DEMOCRÁTICA"
+    titulo: >-
+      Resolución de la Subsecretaría sobre delegación de competencias
+      en materia de información pública.
+    expected: true
+
+  # Synthetic MPTYMD Section 5A — should pass.
+  - identifier: BOE-B-2026-9999-MPTYMD-5A
+    section: "5A"
+    departamento:
+      codigo: "9593"
+      nombre: "MINISTERIO DE POLÍTICA TERRITORIAL Y MEMORIA DEMOCRÁTICA"
+    titulo: >-
+      Anuncio de formalización de contrato de servicios de mantenimiento de
+      las dependencias de la Delegación del Gobierno.
+    expected: true
+
+  # Synthetic MPTYMD Section 5C — should pass.
+  - identifier: BOE-B-2026-9999-MPTYMD-5C
+    section: "5C"
+    departamento:
+      codigo: "9593"
+      nombre: "MINISTERIO DE POLÍTICA TERRITORIAL Y MEMORIA DEMOCRÁTICA"
+    titulo: >-
+      Anuncio particular de la Delegación del Gobierno.
+    expected: true
+
+negatives:
+
+  # Wrong section (5B = V.B) — MITECO publishes water-authority anuncios
+  # here, which the human does NOT want.
+  - identifier: BOE-B-2026-18122
+    section: "5B"
+    departamento:
+      codigo: "9575"
+      nombre: "MINISTERIO PARA LA TRANSICIÓN ECOLÓGICA Y EL RETO DEMOGRÁFICO"
+    titulo: >-
+      Anuncio de la Confederación Hidrográfica del Júcar sobre concesión
+      de aguas...
+    expected: false
+
+  # Wrong section (5A = V.A) — MITECO procurement contracts. Out.
+  - identifier: BOE-B-2026-18080
+    section: "5A"
+    departamento:
+      codigo: "9575"
+      nombre: "MINISTERIO PARA LA TRANSICIÓN ECOLÓGICA Y EL RETO DEMOGRÁFICO"
+    titulo: >-
+      Anuncio de formalización de contratos de la Mancomunidad de los Canales
+      del Taibilla.
+    expected: false
+
+  # Wrong section (2A = II.A) — even MITECO oposiciones don't match.
+  - identifier: BOE-A-2026-NEG-002
+    section: "2A"
+    departamento:
+      codigo: "9575"
+      nombre: "MINISTERIO PARA LA TRANSICIÓN ECOLÓGICA Y EL RETO DEMOGRÁFICO"
+    titulo: >-
+      Resolución por la que se convoca proceso selectivo para el Cuerpo
+      Superior de Sistemas y Tecnologías de la Información.
+    expected: false
+
+  # Section 3 but wrong departamento (Hacienda)
+  - identifier: BOE-A-2026-NEG-004
+    section: "3"
+    departamento:
+      codigo: "1100"
+      nombre: "Ministerio de Hacienda"
+    titulo: >-
+      Resolución por la que se aprueba el modelo de declaración informativa.
+    expected: false
+
+  # Section 3 but wrong departamento (Transportes)
+  - identifier: BOE-A-2026-NEG-005
+    section: "3"
+    departamento:
+      codigo: "1700"
+      nombre: "Ministerio de Transportes y Movilidad Sostenible"
+    titulo: >-
+      Resolución por la que se otorga concesión de servicio de transporte.
+    expected: false
+
+  # Section 4 — judicial — never relevant
+  - identifier: BOE-A-2026-NEG-003
+    section: "4"
+    departamento:
+      codigo: "1900"
+      nombre: "Ministerio de Justicia"
+    titulo: >-
+      Anuncio de citación, comparecencia y emplazamiento por edicto.
+    expected: false
+
+  # Section 1 — framework laws. Not in our filter today (could be added later
+  # if the human says they want RDLs / Leyes affecting renewables).
+  - identifier: BOE-A-2026-NEG-008
+    section: "1"
+    departamento:
+      codigo: "0100"
+      nombre: "Jefatura del Estado"
+    titulo: >-
+      Ley Orgánica de modificación del Código Penal.
+    expected: false
+
+  # MPTYMD oposiciones / personnel (Section 2B) — same ministry, wrong section.
+  # Real item verified from 2026-06-01: BOE-A-2026-11732.
+  - identifier: BOE-A-2026-11732
+    section: "2B"
+    departamento:
+      codigo: "9593"
+      nombre: "MINISTERIO DE POLÍTICA TERRITORIAL Y MEMORIA DEMOCRÁTICA"
+    titulo: >-
+      Resolución por la que se convoca la provisión de puestos de trabajo
+      por el sistema de libre designación.
+    expected: false
+
+  # MPTYMD nombramientos (Section 2A) — same ministry, wrong section.
+  - identifier: BOE-A-2026-9999-MPTYMD-2A
+    section: "2A"
+    departamento:
+      codigo: "9593"
+      nombre: "MINISTERIO DE POLÍTICA TERRITORIAL Y MEMORIA DEMOCRÁTICA"
+    titulo: >-
+      Resolución por la que se nombra Subdelegado del Gobierno.
+    expected: false

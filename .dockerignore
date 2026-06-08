@@ -1,0 +1,28 @@
+.git/
+.github/
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+
+# Reference docs + sample data — not needed in the image
+boe-dataset-deep-dive.html
+boa-dataset-deep-dive.html
+sample_files/
+out/
+docs/
+infra/
+
+# Tests + local dev — not needed in the runtime image
+tests/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*Zone.Identifier

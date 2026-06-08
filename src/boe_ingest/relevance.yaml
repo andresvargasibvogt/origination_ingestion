@@ -1,0 +1,44 @@
+# Relevance filter — matches the human's manual selection on boe.es.
+#
+# Two ministries, organised by section:
+#   - MITECO  (codigo "9575") — Ministerio para la Transición Ecológica y el Reto Demográfico
+#   - MPTYMD  (codigo "9593") — Ministerio de Política Territorial y Memoria Democrática
+#                                (this is the umbrella ministry for Delegaciones del Gobierno)
+#
+# Section codigos as returned by the Datos Abiertos JSON sumario API
+# (verified live 2026-06-02):
+#   "1"   I.   Disposiciones generales
+#   "2A"  II.A Nombramientos
+#   "2B"  II.B Oposiciones y concursos
+#   "3"   III. Otras disposiciones
+#   "4"   IV.  Administración de Justicia
+#   "5A"  V.A  Contratación del Sector Público
+#   "5B"  V.B  Otros anuncios oficiales
+#   "5C"  V.C  Anuncios particulares
+#
+# An item passes if it matches ANY rule below.
+
+rules:
+
+  # Section III (Otras disposiciones) — both ministries.
+  # MITECO publishes the AAP / AAC / DUP / DIA resoluciones here.
+  # MPTYMD covers Política Territorial dispositions (Delegaciones).
+  - section: "3"
+    departamento_codigos:
+      - "9575"   # MITECO
+      - "9593"   # MPTYMD
+
+  # Section V (Anuncios) — MPTYMD only.
+  # The info-pública anuncios from Delegaciones / Subdelegaciones del
+  # Gobierno are issued under MPTYMD's umbrella. V is split into 5A
+  # (procurement), 5B (otros anuncios — where info-pública lives), 5C
+  # (anuncios particulares).
+  - section: "5A"
+    departamento_codigos:
+      - "9593"   # MPTYMD
+  - section: "5B"
+    departamento_codigos:
+      - "9593"   # MPTYMD
+  - section: "5C"
+    departamento_codigos:
+      - "9593"   # MPTYMD

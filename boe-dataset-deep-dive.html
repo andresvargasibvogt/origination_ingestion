@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BOE dataset — deep dive</title>
+<style>
+  :root{
+    --bg:#f4f7fb;
+    --paper:#ffffff;
+    --ink:#0b1220;              /* near-black body text */
+    --ink-soft:#1e293b;         /* slate-800 secondary */
+    --muted:#475569;            /* slate-600 — WCAG AA on white */
+    --line:#dbe2ec;
+    --line-soft:#eef2f7;
+    --accent:#0e7490;           /* cyan-700 */
+    --accent-ink:#155e75;       /* darker for links */
+    --accent-bg:#ecfeff;
+    --ok-bg:#f0fdf4; --ok-ink:#166534; --ok-border:#22c55e;
+    --warn-bg:#fff7ed; --warn-ink:#9a3412; --warn-border:#fb923c;
+    --bad-ink:#b91c1c;
+    --q-bg:#faf5ff; --q-ink:#6b21a8; --q-border:#a855f7;
+    --code-bg:#eef2f7; --code-ink:#0b1220;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    font:16.5px/1.7 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    background:var(--bg);
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+
+  /* Header */
+  header{
+    background:
+      radial-gradient(120% 100% at 0% 0%, #1a365d 0%, #155e75 50%, #134e5e 100%);
+    color:#fff;
+    padding:56px 7vw 48px;
+    border-bottom:1px solid rgba(255,255,255,.08);
+  }
+  header > *{max-width:1180px;width:100%;margin-left:auto;margin-right:auto}
+  header .kicker{
+    text-transform:uppercase;
+    letter-spacing:.18em;
+    font-size:12px;
+    font-weight:700;
+    margin:0 0 14px;
+    color:#a7f3d0;
+  }
+  header h1{
+    margin:0 0 14px;
+    font-size:38px;
+    line-height:1.12;
+    letter-spacing:-.01em;
+    font-weight:700;
+  }
+  header p{
+    margin:8px 0 0;
+    max-width:72ch;
+    color:#e6f6fa;
+    font-size:17px;
+    line-height:1.6;
+  }
+  header p.small{
+    color:#cbe9f0;
+    font-size:13px;
+    margin-top:18px;
+  }
+  header code{
+    background:rgba(255,255,255,.14);
+    color:#ecfeff;
+    padding:1px 6px;
+    border-radius:4px;
+    font-size:12.5px;
+    border:none;
+  }
+
+  /* Layout */
+  .wrap{
+    display:grid;
+    grid-template-columns:260px minmax(0,1fr);
+    gap:0;
+    align-items:start;
+    max-width:1340px;
+    margin:0 auto;
+    background:var(--paper);
+  }
+
+  /* Nav */
+  nav{
+    position:sticky;
+    top:0;
+    align-self:start;
+    max-height:100vh;
+    overflow:auto;
+    padding:32px 14px 32px 22px;
+    font-size:13.5px;
+    border-right:1px solid var(--line);
+    background:var(--paper);
+  }
+  nav a{
+    display:block;
+    color:var(--ink-soft);
+    text-decoration:none;
+    padding:6px 10px;
+    border-radius:6px;
+    line-height:1.4;
+    border-left:2px solid transparent;
+    margin-left:-2px;
+    transition:background .12s ease, color .12s ease;
+  }
+  nav a:hover{
+    background:var(--accent-bg);
+    color:var(--accent-ink);
+  }
+  nav a.active{
+    background:var(--accent-bg);
+    color:var(--accent-ink);
+    border-left-color:var(--accent);
+    font-weight:600;
+  }
+  nav .sec{
+    font-weight:700;
+    color:var(--ink);
+    margin:18px 0 6px;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.1em;
+    padding:0 10px;
+  }
+  nav .sec:first-child{margin-top:0}
+
+  /* Main */
+  main{
+    padding:48px clamp(28px,5vw,72px) 100px;
+    max-width:1040px;
+  }
+
+  /* Typography */
+  h2{
+    font-size:27px;
+    margin:60px 0 10px;
+    padding-top:30px;
+    border-top:1px solid var(--line);
+    letter-spacing:-.012em;
+    line-height:1.25;
+    color:var(--ink);
+    font-weight:700;
+  }
+  h2:first-of-type{border-top:none;padding-top:4px;margin-top:8px}
+  h3{
+    font-size:19.5px;
+    margin:32px 0 8px;
+    color:var(--ink);
+    letter-spacing:-.005em;
+  }
+  h4{
+    font-size:14.5px;
+    margin:20px 0 6px;
+    color:var(--ink-soft);
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    font-weight:700;
+  }
+  p,li{color:var(--ink)}
+  p{margin:10px 0 12px}
+  ul,ol{padding-left:24px}
+  li{margin:5px 0}
+  strong{color:var(--ink)}
+
+  .lead{
+    font-size:18.5px;
+    line-height:1.65;
+    color:var(--ink-soft);
+    margin:10px 0 18px;
+  }
+  .muted{color:var(--muted)}
+  .small{font-size:13.5px}
+
+  /* Links */
+  a.link{
+    color:var(--accent-ink);
+    word-break:break-word;
+    overflow-wrap:anywhere;
+    text-decoration-color:rgba(14,116,144,.45);
+    text-underline-offset:2px;
+  }
+  a.link:hover{color:#083344;text-decoration-color:var(--accent)}
+
+  /* Code */
+  code{
+    background:var(--code-bg);
+    padding:1.5px 6px;
+    border-radius:4px;
+    font:13.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    color:var(--code-ink);
+    border:1px solid #e2e8f0;
+  }
+  pre{
+    background:#0b1220;
+    color:#e2e8f0;
+    padding:18px 20px;
+    border-radius:12px;
+    overflow:auto;
+    font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    border:1px solid #1e293b;
+    box-shadow:0 1px 2px rgba(15,23,42,.06);
+    margin:14px 0 18px;
+  }
+  pre code{background:none;color:inherit;padding:0;border:none}
+
+  /* Tables */
+  table{
+    border-collapse:separate;
+    border-spacing:0;
+    width:100%;
+    margin:16px 0 20px;
+    font-size:14.5px;
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:12px;
+    overflow:hidden;
+    box-shadow:0 1px 2px rgba(15,23,42,.03);
+  }
+  th,td{
+    border-bottom:1px solid var(--line-soft);
+    padding:11px 14px;
+    text-align:left;
+    vertical-align:top;
+    color:var(--ink);
+  }
+  th{
+    background:#f1f5f9;
+    font-weight:700;
+    font-size:12.5px;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    color:var(--ink-soft);
+    border-bottom:1px solid var(--line);
+  }
+  tr:last-child td{border-bottom:none}
+  tr:nth-child(even) td{background:#fafbfd}
+
+  /* Callouts */
+  .call{
+    border-left:4px solid var(--accent);
+    background:var(--accent-bg);
+    padding:14px 18px;
+    border-radius:0 10px 10px 0;
+    margin:18px 0;
+    color:var(--ink);
+  }
+  .call b{display:block;margin-bottom:5px;color:var(--ink);font-weight:700}
+  .call.key{border-color:var(--ok-border);background:var(--ok-bg)}
+  .call.key b{color:var(--ok-ink)}
+  .call.warn{border-color:var(--warn-border);background:var(--warn-bg)}
+  .call.warn b{color:var(--warn-ink)}
+  .call.q{border-color:var(--q-border);background:var(--q-bg)}
+  .call.q b{color:var(--q-ink)}
+
+  /* Pills */
+  .pill{
+    display:inline-block;
+    font-size:10.5px;
+    font-weight:700;
+    padding:2px 9px;
+    border-radius:999px;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    vertical-align:middle;
+    border:1px solid transparent;
+    line-height:1.7;
+  }
+  .pill.real{background:#dcfce7;color:#14532d;border-color:#86efac}
+  .pill.synth{background:#fef3c7;color:#713f12;border-color:#fde68a}
+  .pill.infer{background:#ede9fe;color:#5b21b6;border-color:#ddd6fe}
+
+  /* Cards / grid */
+  .grid2{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+    margin:18px 0;
+  }
+  .card{
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:18px 20px;
+    background:var(--paper);
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+  }
+  .card h4{margin-top:0;color:var(--ink-soft)}
+  .card pre{margin:10px 0}
+
+  /* Flow diagram */
+  .flow{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    align-items:stretch;
+    margin:18px 0;
+    font-size:13.5px;
+  }
+  .flow .node{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:11px 14px;
+    color:var(--ink);
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+    min-width:140px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+  }
+  .flow .node .small{color:var(--muted);display:block;margin-top:3px}
+  .flow .node.g1{background:#fef9c3;border-color:#ca8a04}
+  .flow .node.g2{background:#ecfeff;border-color:#0e7490}
+  .flow .arr{
+    color:var(--muted);
+    font-weight:700;
+    align-self:center;
+    font-size:16px;
+  }
+
+  /* Comparison panel */
+  .compare{
+    background:#f0f9ff;
+    border:1px solid #bae6fd;
+    border-radius:12px;
+    padding:14px 18px;
+    margin:14px 0 4px;
+    font-size:14px;
+  }
+  .compare h4{margin:0 0 6px;color:#075985;font-size:12px;letter-spacing:.07em}
+  .compare table{margin:6px 0 0;border:none;box-shadow:none;background:transparent}
+  .compare th,.compare td{background:transparent;border-bottom:1px solid #bae6fd;padding:6px 10px;font-size:13.5px}
+  .compare th{color:#075985;text-transform:none;letter-spacing:0;font-size:12px}
+  .compare tr:last-child td{border-bottom:none}
+
+  /* Footer */
+  footer{
+    padding:32px 7vw;
+    color:var(--muted);
+    font-size:13.5px;
+    border-top:1px solid var(--line);
+    background:var(--paper);
+  }
+  footer p{color:var(--muted);margin:0;max-width:92ch;line-height:1.6}
+  footer strong{color:var(--ink)}
+
+  /* Selection */
+  ::selection{background:#bae6fd;color:#0b1220}
+
+  /* Responsive */
+  @media (max-width:980px){
+    .wrap{grid-template-columns:1fr}
+    nav{
+      position:static;
+      max-height:none;
+      border-right:none;
+      border-bottom:1px solid var(--line);
+      padding:18px 6vw;
+    }
+    main{padding:32px 6vw 60px}
+    .grid2{grid-template-columns:1fr}
+    header{padding:42px 6vw 36px}
+    header h1{font-size:28px}
+    header p{font-size:15.5px}
+    h2{font-size:23px;margin-top:44px;padding-top:24px}
+  }
+</style>
+</head>
+<body>
+<header>
+  <p class="kicker">Phase 1 · Source deep dive · Group 1 (Pipeline)</p>
+  <h1>BOE — Boletín Oficial del Estado</h1>
+  <p>How the national gazette is published each day, who the actors are, what the permit identifiers
+  (BOE-A vs BOE-B, AAP / AAC / DIA …) actually mean, when the MITECO dossier link appears in the
+  text, and how all of it lands in our schema.</p>
+  <p class="small">Compiled 2026-05-28 · companion to <code>docs/boa-dataset-deep-dive.html</code> ·
+  grounds the live phase-0 BOE pipeline (<code>archive/phase-0/ingestion/boe/</code> +
+  <code>archive/phase-0/extraction/boe_extractor.py</code>) with the regulatory process behind the
+  data.</p>
+</header>
+
+<div class="wrap">
+<nav>
+  <div class="sec">Orientation</div>
+  <a href="#what">1 · What BOE is</a>
+  <a href="#daily">2 · How it's generated daily</a>
+  <a href="#actors">3 · Who creates the "projects"</a>
+  <div class="sec">The permit lifecycle</div>
+  <a href="#lifecycle">4 · Lifecycle &amp; statuses</a>
+  <a href="#classifier">4b · BOE-A vs BOE-B classifier</a>
+  <a href="#status-q">5 · Does status = all developers?</a>
+  <a href="#competence">6 · State vs regional (50 MW)</a>
+  <div class="sec">Dossiers</div>
+  <a href="#miteco">7 · When dossiers are created</a>
+  <div class="sec">Engineering</div>
+  <a href="#access">8 · Technical access shape</a>
+  <a href="#links">9 · Sample links &amp; real chain</a>
+  <a href="#schema">10 · Mapping to our schema</a>
+  <a href="#caveats">11 · Caveats &amp; open Qs</a>
+</nav>
+
+<main>
+
+<p class="lead">BOE is the legally-binding national gazette of the Kingdom of Spain. For Phase 1 it
+is Group 1 pipeline source <strong>#1</strong> (BOA is #2): the canonical regulatory-events channel
+for every &gt;50 MW renewable project under state competence. The mental model is identical to BOA's
+— <strong>BOE does not contain "projects"; it contains administrative <em>acts</em> about
+projects</strong> — but the technical access shape, the cadence, and the issuing administrations
+are very different.</p>
+
+<div class="compare">
+  <h4>If you've just read the BOA deep-dive — what's different here</h4>
+  <table>
+    <tr><th></th><th>BOE</th><th>BOA</th></tr>
+    <tr><td>Cadence</td><td>Every day <em>except Sundays</em></td><td>Mon–Fri + extraordinarios</td></tr>
+    <tr><td>Document format</td><td><b>XML-first</b> (also PDF + HTML)</td><td>PDF-only</td></tr>
+    <tr><td>List API</td><td><b>JSON/XML sumario API</b> by date</td><td>SPA scrape (no clean API)</td></tr>
+    <tr><td>Identifier</td><td><code>BOE-A-{yyyy}-{seq}</code> / <code>BOE-B-{yyyy}-{seq}</code></td><td><code>BOA{yyyymmdd}{nn}</code> CSV code</td></tr>
+    <tr><td>Substantive body</td><td>MITECO DG Política Energética y Minas</td><td>Dept. Industria, Gobierno de Aragón</td></tr>
+    <tr><td>Environmental body</td><td>MITECO DG Calidad y Evaluación Ambiental</td><td>INAGA (Aragón)</td></tr>
+    <tr><td>Pipeline status</td><td><b>Live</b> (boe-v4 extractor shipped in phase-0)</td><td>T1.1 scaffold; PDF pipeline lands in Sprint 1</td></tr>
+  </table>
+</div>
+
+<p class="small muted">Provenance legend used throughout:
+<span class="pill real">live-verified</span> confirmed against the source or a primary regulatory
+text in research this week ·
+<span class="pill synth">spike</span> from our phase-0 BOE pipeline (loader + extractor + fixtures
+on disk) ·
+<span class="pill infer">domain</span> Spanish-permitting domain knowledge, grounded in primary
+law but not cross-checked against a live anuncio body.</p>
+
+<!-- ───────────────────────────── 1 ───────────────────────────── -->
+<h2 id="what">1 · What BOE is</h2>
+<p><span class="pill real">live-verified</span> The <strong>Boletín Oficial del Estado</strong>
+(<a class="link" href="https://www.boe.es/">boe.es</a>) is the official gazette of the Spanish
+state, published by the Agencia Estatal Boletín Oficial del Estado under the Ministry of the
+Presidency. It carries the legally-binding text of organic laws, royal decrees, ministerial orders,
+administrative <em>resoluciones</em>, environmental-impact decisions (DIAs), and public-consultation
+openings. A document has no legal effect until it appears here — publication <em>is</em> the act
+of notification.</p>
+
+<p>Five Roman-numeral sections, each grouped by <code>DEPARTAMENTO DE …</code> headings. For
+renewables only two sections and one ministry matter:</p>
+
+<table>
+<tr><th>Section</th><th>Contains</th><th>Renewable relevance</th></tr>
+<tr><td><b>I.</b> Disposiciones generales</td><td>Laws, RDs, RDLs, normative orders</td><td>Rare — framework changes only (RDL 23/2020, RDL 7/2025…)</td></tr>
+<tr><td><b>II.</b> Autoridades y personal</td><td>Appointments, oposiciones</td><td>None</td></tr>
+<tr><td><b>III.</b> Otras disposiciones</td><td>Administrative resolutions, grants, authorizations</td><td><b>High</b> — DIA, AAP, AAC, DUP grants land here (<code>BOE-A-{y}-{seq}</code>)</td></tr>
+<tr><td><b>IV.</b> Administración de Justicia</td><td>Court notices, edictos</td><td>None</td></tr>
+<tr><td><b>V.</b> Anuncios</td><td>Public-consultation openings, info-pública, procurement</td><td><b>High</b> — info-pública anuncios live in V-B (<code>BOE-B-{y}-{seq}</code>)</td></tr>
+</table>
+
+<p>The one ministry that issues renewable acts:</p>
+<ul>
+<li><strong>Ministerio para la Transición Ecológica y el Reto Demográfico</strong> (MITECO) —
+department code <code>9575</code> in the BOE XML. <span class="pill real">live-verified</span>
+Confirmed verbatim against
+<a class="link" href="https://www.boe.es/diario_boe/xml.php?id=BOE-A-2025-6776">the XML of
+BOE-A-2025-6776</a>. Two Direcciones Generales do nearly all the renewable lifting:
+  <ul>
+    <li><b>DG Política Energética y Minas (DGPEM)</b> — the <em>órgano sustantivo</em>. Issues AAP,
+    AAC, DUP, AEX. Signs the resoluciones in Section III.</li>
+    <li><b>DG Calidad y Evaluación Ambiental (DGCEA)</b> — the <em>órgano ambiental</em>. Formulates
+    the DIA (also in Section III).</li>
+  </ul>
+</li>
+<li>For projects in a single province the AAP info-pública anuncio may also be signed by an
+<strong>Área de Industria y Energía</strong> in the <em>Delegación / Subdelegación del Gobierno</em>
+(Section V-B) — acting <em>por delegación</em> of the DGPEM. This is the "BOE-B prefix" surface.</li>
+</ul>
+
+<!-- ───────────────────────────── 2 ───────────────────────────── -->
+<h2 id="daily">2 · How the dataset is generated each day</h2>
+<p>BOE is, structurally, what BOA <em>tried</em> to be: a publication chain with a real machine
+interface bolted on. The daily lifecycle:</p>
+
+<div class="flow">
+  <span class="node">Body submits act</span><span class="arr">→</span>
+  <span class="node">Editorial typesetting</span><span class="arr">→</span>
+  <span class="node">Daily edition assembled<br><span class="small">sections I–V, BOE-A / BOE-B serials</span></span><span class="arr">→</span>
+  <span class="node g2">Published<br><span class="small">XML + JSON sumario + PDF</span></span><span class="arr">→</span>
+  <span class="node g2">Legally in force</span>
+</div>
+
+<ul>
+<li><span class="pill real">live-verified</span> <strong>Cadence:</strong>
+<em>"El 'Boletín Oficial del Estado' se publica todos los días del año, salvo los domingos."</em>
+— BOE Open Data FAQ. That's <b>6 days a week including most holidays</b>, not Mon–Fri as one might
+assume by analogy with BOA. Occasional <em>suplementos</em> use their own pagination but share the
+day's edition number.</li>
+<li><span class="pill real">live-verified</span> <strong>Each document gets a stable identifier</strong>
+of the form <code>BOE-A-{year}-{seq}</code> (Sections I–IV) or <code>BOE-B-{year}-{seq}</code>
+(Section V Anuncios). The seq is a year-global running serial within each prefix, not per section
+and not per ministry. We use it as <code>source_document.external_id</code>.</li>
+<li><span class="pill real">live-verified</span> <strong>Bodies are XML-first.</strong> The
+canonical structured form is at <code>www.boe.es/diario_boe/xml.php?id={identifier}</code>. PDF and
+HTML variants exist; the PDF is the legally-authentic copy, the XML is the cleanest input for our
+extractor.</li>
+<li><span class="pill real">live-verified</span> <strong>There <em>is</em> a clean list API.</strong>
+The Open Data programme exposes <code>www.boe.es/datosabiertos/api/boe/sumario/{YYYYMMDD}</code>,
+with content negotiation between XML (default) and JSON via <code>Accept</code> header. This is
+the gift BOA does not give us — no SPA scraping required.</li>
+</ul>
+
+<div class="call key"><b>The key mental model</b>
+A day of BOE = a tree of independently-authored administrative acts, glued together by an editorial
+process and exposed via a published JSON/XML index. We hit the sumario for date <em>D</em>, walk
+<code>sección → departamento → epígrafe → item</code>, filter on a relevance regex (department name
++ title keywords), then fetch each survivor's XML body and run the <code>boe-v4</code> extractor
+on it.</div>
+
+<!-- ───────────────────────────── 3 ───────────────────────────── -->
+<h2 id="actors">3 · Who creates the "projects" in the gazette</h2>
+<p><span class="pill infer">domain</span> Same answer as BOA: <strong>nobody — gazette entries are
+acts <em>about</em> projects, not projects themselves.</strong> The chain of actors at the national
+level:</p>
+
+<table>
+<tr><th>Actor</th><th>Role</th><th>What they produce in BOE</th></tr>
+<tr><td><b>Promotor / titular</b><br>(the developer)</td><td>Files the application; the project itself is a private filing.</td><td>Nothing directly. Named in others' acts.</td></tr>
+<tr><td><b>Órgano sustantivo</b><br>(MITECO DGPEM, or its Delegación del Gobierno por delegación)</td><td>Opens info-pública on AAP; grants AAP, AAC, DUP, AEX.</td><td>Resoluciones in Sec. III (<code>BOE-A</code>) and anuncios in Sec. V-B (<code>BOE-B</code>)</td></tr>
+<tr><td><b>Órgano ambiental</b><br>(MITECO DGCEA)</td><td>Formulates the DIA after evaluating the EsIA.</td><td>Resoluciones in Sec. III (<code>BOE-A</code>) — favorable, desfavorable, or condicionada</td></tr>
+<tr><td><b>Consejo de Ministros</b></td><td>For very large or DUP-heavy projects, the AAP+AAC+DUP can be authorised by Cabinet acuerdo (Ley 24/2013 Art. 54 route).</td><td>Acuerdo in Sec. III. <span class="pill real">live</span> Example: BOE-A-2024-17712 (La Vega, 109,26 MW).</td></tr>
+<tr><td><b>Gestor de red</b><br>(REE for transmission, distributor for ≥132 kV)</td><td>Grants the access &amp; connection permit at a substation.</td><td>Mostly <em>not</em> in BOE — lives in REE/CNMC tables (Group 2). The grid node is the join key.</td></tr>
+</table>
+
+<div class="call"><b>Implication for our pipeline</b>
+The developer "creates" the project by filing; MITECO then emits a stream of dated acts about it
+over 2–5 years. Our <code>project</code> entity is a rollup; the <code>project_linker</code>
+stitches a project name like <em>"Planta solar fotovoltaica 'Los Vientos I'"</em> across its
+información pública, its DIA from DGCEA, and its AAP from DGPEM — events that may sit months
+apart and be signed by different DGs. The BOE-v4 extractor populates <code>project_name</code>,
+<code>developer_name</code> + <code>developer_tax_id</code>, and cadastral refs to make this
+join robust.</div>
+
+<!-- ───────────────────────────── 4 ───────────────────────────── -->
+<h2 id="lifecycle">4 · The permit lifecycle &amp; what each status means</h2>
+<p><span class="pill real">live-verified</span> A Spanish renewable project under state competence
+(&gt;50 MW or multi-CCAA or offshore) clears a defined sequence of permits. Each one is a separate
+BOE event, and <strong>RDL 23/2020</strong>
+(<a class="link" href="https://www.boe.es/buscar/act.php?id=BOE-A-2020-6621">BOE-A-2020-6621</a>)
+attaches statutory deadlines (<em>hitos</em>) indexed against the date the access permit was
+obtained — miss one and the grid-access permit lapses and the economic guarantees (≈ 40,000 €/MW
+under RD 1183/2020) are executed.</p>
+
+<table>
+<tr><th>#</th><th>Status / act</th><th>Spanish</th><th>Who issues it</th><th>Hito deadline*</th><th>Our <code>event_type</code></th></tr>
+<tr><td>0</td><td>Access &amp; connection permit</td><td>Permiso de acceso y conexión</td><td>REE / distributor</td><td>start of clock</td><td><span class="muted">(Group 2)</span></td></tr>
+<tr><td>1</td><td>Application admitted &amp; info-pública opens</td><td>Información pública (AAP + EsIA, often bundled)</td><td>DGPEM via Delegación</td><td><b>6 months</b> (admisión a trámite)</td><td><code>PC_OPENED</code></td></tr>
+<tr><td>2</td><td>Favourable environmental decision</td><td>Declaración de Impacto Ambiental (DIA)</td><td>MITECO DGCEA</td><td><b>22 mo</b> (→ 31 mo post-RDL 29/2021)</td><td><code>DIA_PUBLISHED</code></td></tr>
+<tr><td>3</td><td>Prior administrative authorisation</td><td>Autorización Administrativa Previa (AAP)</td><td>MITECO DGPEM</td><td><b>25 months</b></td><td><code>RESOLUTION_GRANTED</code></td></tr>
+<tr><td>4</td><td>Construction authorisation</td><td>Autorización Administrativa de Construcción (AAC)</td><td>MITECO DGPEM</td><td><b>28 mo</b> (→ 37 mo post-RDL 29/2021)</td><td><code>RESOLUTION_GRANTED</code></td></tr>
+<tr><td>5</td><td>Operating authorisation</td><td>Autorización de Explotación (AEX)</td><td>MITECO DGPEM</td><td><b>60 months / 5 yrs</b> (7 yrs for bombeos)</td><td><code>RESOLUTION_GRANTED</code></td></tr>
+</table>
+<p class="small muted">*Cohort-indexed. The deadlines above are the 2018-2020 cohort counted from
+RDL 23/2020's entry into force (25 June 2020); later cohorts use different reference dates.
+<span class="pill infer">domain</span> RDL 7/2025 (BOE-A-2025-12857) exempted generation and storage
+installations <b>≤500 kW</b> from needing AAP/AAC — irrelevant at utility scale, but it means
+small projects vanish from BOE entirely.</p>
+
+<h3>Outcome dimension</h3>
+<p>Each lifecycle act additionally carries an <strong>outcome</strong>:
+<code>FAVORABLE / DESFAVORABLE / FAVORABLE&nbsp;CONDICIONADA</code> (DIAs) or
+<code>otorgada / desestimada / denegada / desistida</code> (resoluciones). After the 2026-05-19 IBV
+reconciliation we split this into <code>permit_event.event_outcome</code> — a <em>desfavorable</em>
+DIA or a <em>desestimación</em> is a project-killer and a direct trigger for our
+predicted-capacity-emergence model. <span class="pill real">live</span> Real example of a kill:
+<a class="link" href="https://www.boe.es/diario_boe/txt.php?id=BOE-A-2024-26100">BOE-A-2024-26100</a>
+(desestimación of V Solar 1 / Shell, 246,23 MW).</p>
+
+<!-- ───────────────────────────── 4b ───────────────────────────── -->
+<h2 id="classifier">4b · The BOE-A vs BOE-B classifier (a free lifecycle signal)</h2>
+<p>Unlike BOA, BOE encodes a coarse lifecycle phase <em>in the identifier prefix itself</em>. Use
+this to route documents to the right extractor branch before reading the body:</p>
+
+<table>
+<tr><th>Identifier prefix &amp; issuer</th><th>What it almost always is</th><th>Lifecycle hito</th></tr>
+<tr><td><b>BOE-B</b> + <em>Subdelegación / Delegación del Gobierno</em></td><td>Anuncio de información pública on AAP+EsIA</td><td>Hito 1 (PC_OPENED)</td></tr>
+<tr><td><b>BOE-A</b> + MITECO <b>DGCEA</b></td><td>DIA resolución (favorable/desfavorable/condicionada)</td><td>Hito 2 (DIA_PUBLISHED)</td></tr>
+<tr><td><b>BOE-A</b> + MITECO <b>DGPEM</b> ("se otorga … AAP")</td><td>AAP grant — usually bundled with AAC and sometimes DUP</td><td>Hitos 3 + 4 (RESOLUTION_GRANTED)</td></tr>
+<tr><td><b>BOE-A</b> + MITECO <b>DGPEM</b> ("se desestima")</td><td>Desestimación / caducidad</td><td>terminal — feeds <code>predicted_capacity_window</code></td></tr>
+<tr><td><b>BOE-A</b> + Consejo de Ministros</td><td>Acuerdo bundling AAP+AAC+DUP for big or DUP-heavy projects</td><td>Hitos 3 + 4 (+ utility-public declaration)</td></tr>
+<tr><td><em>(usually absent from BOE)</em></td><td>AEX / puesta en servicio</td><td>Hito 5 — typically notified directly, not gazetted</td></tr>
+</table>
+
+<p class="small muted"><span class="pill real">live</span> Cross-tabulation drawn from real
+identifiers in this week's research: BOE-A-2024-15085, BOE-A-2024-9383, BOE-A-2024-17712,
+BOE-A-2024-23733, BOE-A-2024-13559, BOE-A-2024-14069, BOE-A-2024-26100, BOE-A-2025-6776,
+BOE-A-2025-17914, BOE-B-2023-17272, BOE-B-2024-27073, BOE-B-2025-36444, BOE-B-2025-39236. The
+mapping is empirical and high-coverage but not exhaustive (oddities exist: corrección de errores,
+modificaciones de proyecto, hybridisations).</p>
+
+<!-- ───────────────────────────── 5 ───────────────────────────── -->
+<h2 id="status-q">5 · Does the status (AAP/AAC/DIA) reflect <em>all</em> developers who applied?</h2>
+<div class="call key"><b>No — same as BOA. A BOE status is always single-expediente,
+single-promoter.</b>
+Each announcement resolves <em>one</em> project promoted by <em>one</em> developer. There is no
+such thing in BOE as a node-level or "all-applicants" status.</div>
+
+<p><span class="pill infer">domain</span> The mechanics are slightly different at the state level
+than at the autonomic level. At transmission nodes (the >50 MW band that BOE covers), formal
+<em>concursos</em> are more common because grid capacity scarcity is sharper, and RDL 23/2020
+imposes the same caducidad clock on every queued expediente. So you can have, at one REE substation
+simultaneously:</p>
+<ul>
+<li>Developer A — AAP granted (BOE-A from DGPEM, hito 3 cleared)</li>
+<li>Developer B — DIA favorable but AAP not yet (BOE-A from DGCEA only, hito 2)</li>
+<li>Developer C — desistimiento or desestimación (BOE-A from DGPEM, terminal)</li>
+<li>Developer D — still in información pública (BOE-B from Delegación, hito 1)</li>
+</ul>
+<p>BOE reports each of these as a separate dated act. It never emits a combined "status of
+substation X." That node-level competitive picture is <strong>something we synthesise</strong> —
+it does not exist in any single source.</p>
+
+<div class="call"><b>This is exactly why our data model anchors on substation + access_date.</b>
+We attach every per-expediente event (<code>permit_event</code> → <code>substation_mention</code>)
+to the grid node, then read across them to assemble the node view BOE never gives you. A
+<code>contest_reservation</code> flag marks nodes under formal <em>concurso</em>, which gates the
+prediction (reserved capacity does not freely re-emerge).</div>
+
+<p><strong>BOE-specific subtlety:</strong> the extractor distinguishes <em>grid-connection
+substations</em> (REE/DSO-owned, the join key) from <em>developer-built substations</em>
+(project-specific elevadora). Both can appear in a single BOE anuncio body
+(<span class="pill synth">spike</span> see <code>boe_extractor.py:118-134</code>); only the former
+joins CNMC capacity tables.</p>
+
+<!-- ───────────────────────────── 6 ───────────────────────────── -->
+<h2 id="competence">6 · Why BOE and not BOA — state vs regional competence</h2>
+<p><span class="pill real">live-verified</span> The competence rule is <strong>Article 3.13 of
+Ley 24/2013 del Sector Eléctrico</strong>
+(<a class="link" href="https://www.boe.es/buscar/act.php?id=BOE-A-2013-13645">BOE-A-2013-13645</a>).
+The state (MITECO via DGPEM) is competent if <strong>any one</strong> of these triggers is met:</p>
+
+<ul>
+<li><b>Letter (a) — 50 MW threshold:</b> <em>"Instalaciones peninsulares de producción de energía
+eléctrica, incluyendo sus infraestructuras de evacuación, de potencia eléctrica instalada superior
+a 50 MW"</em></li>
+<li><b>Letter (b) — multi-CCAA:</b> the project (including evacuation line) crosses an autonomous-
+community boundary</li>
+<li><b>Letter (c) — offshore:</b> located in territorial sea</li>
+</ul>
+
+<p>Otherwise competence falls to the relevant CCAA. So BOE and BOA are <strong>partitioned</strong>,
+not redundant:</p>
+
+<table>
+<tr><th></th><th>State competence → <b>BOE</b></th><th>Regional competence → <b>BOA</b> (Aragón slice)</th></tr>
+<tr><td>Threshold</td><td>&gt;50 MW peninsular, or multi-CCAA, or offshore</td><td>≤50 MW within one CCAA</td></tr>
+<tr><td>Substantive body</td><td>MITECO DGPEM</td><td>Dept. de Industria, Gobierno de Aragón</td></tr>
+<tr><td>Environmental body (DIA)</td><td>MITECO DGCEA</td><td>INAGA</td></tr>
+<tr><td>Dossier warehouse</td><td><code>ssweb.seap.minhap.es/almacen/…</code> <span class="pill real">live</span></td><td>Aragón portal (<code>aragon.es</code>)</td></tr>
+</table>
+
+<p>A 250 MW PV plant is BOE+MITECO; a 49.5 MW plant (a very common deliberately-sized figure) is
+BOA+INAGA. The two sources cover <em>different projects</em>, which is also why dossier capture has
+two source paths (§7).</p>
+
+<!-- ───────────────────────────── 7 ───────────────────────────── -->
+<h2 id="miteco">7 · When are the dossiers created (and where they actually live)?</h2>
+<p>Same precise answer as BOA: the dossier (Memoria, Estudio de Impacto Ambiental, SHP boundary,
+Separatas de afectados, EM-fields and SyS studies, ~100–300 MB) is published <strong>at the moment
+información pública opens</strong> — i.e. simultaneously with our <code>PC_OPENED</code> event so
+the public can review the project and file <em>alegaciones</em>.</p>
+
+<div class="call key"><b>Live-verified — three URL patterns coexist in 2026</b>
+A May 2026 probe of seven BOE-B anuncios shows the warehouse URL pattern <strong>segments by
+issuing Subdelegación, not by year</strong>. Three patterns are simultaneously in use:
+<ol style="margin:6px 0 0">
+<li><code>https://almacen.redsara.es/sending/public/{uuid-v4}</code> — modern GEISER/ORVE warehouse.
+<span class="pill real">live</span>
+<a class="link" href="https://www.boe.es/diario_boe/txt.php?id=BOE-B-2026-15230">BOE-B-2026-15230</a>
+(Lleida) — also the only body that printed an explicit expiry line: <em>"Los ficheros permanecerán
+disponibles para su descarga hasta el 24/07/2026"</em> (73 days from publication).</li>
+<li><code>https://ssweb.seap.minhap.es/almacen/descarga/envio/{40-hex}</code> — legacy SEAP
+warehouse, <strong>still in active use</strong>. <span class="pill real">live</span>
+<a class="link" href="https://www.boe.es/diario_boe/txt.php?id=BOE-B-2026-4036">BOE-B-2026-4036</a>
+(Valencia, BESS Valle Solar);
+<a class="link" href="https://www.boe.es/diario_boe/txt.php?id=BOE-B-2024-27073">BOE-B-2024-27073</a>
+(Córdoba, Carbo).</li>
+<li><strong>No direct file URL.</strong> Body points only to the per-CCAA index at
+<code>mptmd.gob.es/portal/delegaciones_gobierno/delegaciones/{ccaa}/proyectos-ci/…</code> or, in
+Andalucía, to an <code>acortar.link</code> shortener. The scraper must traverse one click deeper to
+reach the dossier ZIP. <span class="pill real">live</span> Alicante
+(<a class="link" href="https://www.boe.es/diario_boe/txt.php?id=BOE-B-2026-15059">BOE-B-2026-15059</a>),
+Cuenca
+(<a class="link" href="https://www.boe.es/diario_boe/txt.php?id=BOE-B-2026-14190">BOE-B-2026-14190</a>),
+Sevilla
+(<a class="link" href="https://www.boe.es/diario_boe/txt.php?id=BOE-B-2026-12664">BOE-B-2026-12664</a>).</li>
+</ol>
+T1.6 must handle all three patterns plus shortener-resolution.
+<code>docs/requirements/miteco-project-documentation-synthesis.md</code> has been updated
+2026-05-28 with the same finding.</div>
+
+<h3>Información-pública duration</h3>
+<ul>
+<li><span class="pill real">live-verified</span> <b>For the AAP request:</b> <em>"20 días hábiles"</em>
+(RD 1955/2000 art. 125 + art. 144 for DUP).</li>
+<li><span class="pill real">live-verified</span> <b>For the EIA package:</b> <em>"un plazo no inferior
+a treinta días hábiles"</em> (Ley 21/2013 art. 36 —
+<a class="link" href="https://www.boe.es/buscar/act.php?id=BOE-A-2013-12913">BOE-A-2013-12913</a>).
+When the trámite is conjunto (Art. 14 Ley 21/2013) the 30-day EIA window dominates.</li>
+<li><span class="pill real">live-verified</span> <b>Recently extended:</b> RDL 7/2026 (BOE-A-2026-6544)
+extended the standard renewable información-pública to <strong>45 days</strong>. Anuncios
+post-March-2026 should use the 45-day window.</li>
+</ul>
+
+<div class="call warn"><b>The operational pain point — and why we capture it.</b>
+The warehouse links are ephemeral. <span class="pill real">live</span> Only one of seven 2026
+anuncios printed an explicit expiry, and that one was 73 days — so treat the IBV deck's "~60 day"
+figure as a planning approximation, not a measured constant. T2.6 should set
+<code>validity_until</code> only when the body actually states it; null otherwise. Our Phase 1
+plan: capture the pointer at PC_OPENED (T1.6 — extends the BOE-v4 extractor), probe the manifest
+daily (T2.6), surface an "expiring this week" panel (T4.7), and one-click-fetch the archive into
+Azure Blob before it vanishes (T3.5).</div>
+
+<p class="small muted">Phase 1 runs the manifest probe for Aragón-scoped projects only (per
+<code>docs/spikes/sprint-0/post-meeting-decisions.md</code>); non-Aragón MITECO URLs captured by
+the BOE extractor are still stored opportunistically but not probed. Full 17-CCAA coverage and any
+dossier <em>content</em> extraction (Memoria / SHP / Separatas) are deferred to Phase 2.</p>
+
+<!-- ───────────────────────────── 8 ───────────────────────────── -->
+<h2 id="access">8 · Technical access shape (how we ingest it)</h2>
+<div class="grid2">
+  <div class="card"><h4>Daily sumario <span class="pill real">live</span></h4>
+  <p class="small">JSON or XML index by date:</p>
+  <pre><code>GET https://www.boe.es/datosabiertos/
+    api/boe/sumario/{YYYYMMDD}
+Accept: application/json   # or application/xml
+
+→ 200, application/json
+{ "data": { "sumario": {
+    "metadatos": { "fecha_publicacion": "..." },
+    "diario": [
+      { "numero": "186",
+        "seccion": [
+          { "codigo": "1",     "nombre": "I. ...",
+            "departamento": [ ... ] },
+          { "codigo": "III",   "nombre": "III. ...",
+            "departamento": [ ... ] }
+        ]}]}}}</code></pre>
+  <p class="small"><span class="pill synth">spike</span> Phase-0 client throttles to 1 req/s; 404 on
+  Sundays/holidays. Hierarchy: sección → departamento → epígrafe? → item.</p></div>
+
+  <div class="card"><h4>Document body <span class="pill real">live</span></h4>
+  <p class="small">Three serializations per document:</p>
+  <pre><code># XML — cleanest for extraction
+GET …/diario_boe/xml.php?id=BOE-A-2025-6776
+&lt;documento fecha_actualizacion="20250403071548"&gt;
+  &lt;metadatos&gt;
+    &lt;identificador&gt;BOE-A-2025-6776&lt;/identificador&gt;
+    &lt;titulo&gt;Resolución de 21 de marzo …&lt;/titulo&gt;
+    &lt;departamento codigo="9575"&gt;Ministerio …&lt;/departamento&gt;
+  &lt;/metadatos&gt;
+  &lt;analisis&gt;&lt;materias&gt;…&lt;/materias&gt;&lt;/analisis&gt;
+  &lt;texto&gt;&lt;p&gt;…&lt;/p&gt;&lt;/texto&gt;
+&lt;/documento&gt;
+
+# Plus: txt.php (HTML reader) and …/boe/dias/{Y}/{M}/{D}/pdfs/{id}.pdf</code></pre>
+  <p class="small"><span class="pill synth">spike</span> XML is byte-stable. Phase-0 client uses 2.0 s
+  min interval (stricter than sumario, because xml.php is the legacy endpoint).</p></div>
+
+  <div class="card"><h4>ELI URIs <span class="pill real">live</span></h4>
+  <pre><code>https://www.boe.es/eli/es/
+   {type}/{YYYY}/{MM}/{DD}/{num}/{version}</code></pre>
+  <p class="small">Stable canonical citation for <b>numbered legislación</b> only (leyes, RDs, RDLs).
+  <strong>Important caveat:</strong> resoluciones in Sec. III and anuncios in Sec. V <em>do not</em>
+  carry ELI URIs. Address those by their <code>BOE-A-…</code> / <code>BOE-B-…</code> identifier
+  instead. ELI dimensions: jurisdiction, type, year, month, day, number, version (<code>dof</code>
+  original / <code>con</code> consolidated), language, format.</p></div>
+
+  <div class="card"><h4>Posture <span class="pill real">live</span> / <span class="pill synth">spike</span></h4>
+  <ul class="small" style="margin:0;padding-left:18px">
+    <li><b>robots.txt:</b> www.boe.es disallows verifica.* endpoints, search-result pages, and
+    hundreds of individual blocked document IDs ("derecho al olvido"). No <code>Crawl-delay</code>
+    directive found. Honour it via <code>RobotsGuard</code>.</li>
+    <li><b>Rate limit:</b> not published; community convention ≈ 1 req/s. Phase-0 enforces 1.0 s on
+    sumario, 2.0 s on xml.php.</li>
+    <li><b>5xx retry:</b> 3 attempts, exponential backoff (Phase-0 tenacity config).</li>
+    <li><b>Licence:</b> Spanish PSI reuse regime — attribution required
+    (<em>"Fuente de los datos: Agencia Estatal Boletín Oficial del Estado"</em>), no
+    misrepresentation. <strong>Not</strong> CC BY in name (despite the common shorthand).</li>
+    <li><b>User-Agent:</b> identify yourself; default Python UAs sometimes get throttled.</li>
+    <li><b>Charset:</b> all responses UTF-8.</li>
+  </ul></div>
+</div>
+
+<!-- ───────────────────────────── 9 ───────────────────────────── -->
+<h2 id="links">9 · Sample links &amp; a real lifecycle chain</h2>
+<p>Starting kit, all live-verified during research this week. The "real chain" below traces
+<em>one</em> project across multiple BOE entries — the kind of reconstruction the
+<code>project_linker</code> automates.</p>
+
+<table>
+<tr><th>What</th><th>Identifier &amp; URL</th><th>Why it matters</th></tr>
+<tr><td>BOE Open Data home</td><td><a class="link" href="https://www.boe.es/datosabiertos/">boe.es/datosabiertos</a></td><td>Programme entry; lists every API</td></tr>
+<tr><td>Sumario API spec</td><td><a class="link" href="https://www.boe.es/datosabiertos/api/api.php">boe.es/datosabiertos/api/api.php</a></td><td>Endpoint catalogue (sumario, legislación consolidada, datos auxiliares)</td></tr>
+<tr><td>DUP example (PV, 50.1 MW)</td><td><a class="link" href="https://www.boe.es/diario_boe/txt.php?id=BOE-A-2025-6776">BOE-A-2025-6776</a></td><td>Resolución DGPEM otorgando DUP — Los Quincetos, Valladolid</td></tr>
+<tr><td>DIA favorable (PV, 54.6 MW)</td><td><a class="link" href="https://www.boe.es/diario_boe/txt.php?id=BOE-A-2025-17914">BOE-A-2025-17914</a></td><td>Resolución DGCEA — Los Vientos I, Zaragoza</td></tr>
+<tr><td>DIA <b>desfavorable</b> (PV, 121.5 MWp)</td><td><a class="link" href="https://www.boe.es/diario_boe/txt.php?id=BOE-A-2024-13559">BOE-A-2024-13559</a></td><td>El Espino, Madrid — canonical project-kill example for predicted-emergence model</td></tr>
+<tr><td>Información pública (PV, 81.4 MW)</td><td><a class="link" href="https://www.boe.es/diario_boe/txt.php?id=BOE-B-2024-27073">BOE-B-2024-27073</a></td><td>Carbo, Córdoba — body embeds <code>ssweb.seap.minhap.es/almacen/…</code> dossier URL</td></tr>
+<tr><td>Desestimación (PV, 246 MW)</td><td><a class="link" href="https://www.boe.es/diario_boe/txt.php?id=BOE-A-2024-26100">BOE-A-2024-26100</a></td><td>V Solar 1 (Shell) — caducidad surface; capacity freed</td></tr>
+<tr><td>RDL 23/2020 (the hitos statute)</td><td><a class="link" href="https://www.boe.es/buscar/act.php?id=BOE-A-2020-6621">BOE-A-2020-6621</a></td><td>Article 1 — hitos 1–5 + caducidad + avales</td></tr>
+<tr><td>Ley 24/2013 (sector eléctrico)</td><td><a class="link" href="https://www.boe.es/buscar/act.php?id=BOE-A-2013-13645">BOE-A-2013-13645</a></td><td>Article 3.13 — the 50 MW / multi-CCAA / offshore competence rule</td></tr>
+<tr><td>Ley 21/2013 (evaluación ambiental)</td><td><a class="link" href="https://www.boe.es/buscar/act.php?id=BOE-A-2013-12913">BOE-A-2013-12913</a></td><td>Article 36 — 30-día-hábil EIA información pública floor</td></tr>
+<tr><td>RDL 7/2025 (small-installations carve-out)</td><td><a class="link" href="https://www.boe.es/buscar/act.php?id=BOE-A-2025-12857">BOE-A-2025-12857</a></td><td>≤500 kW generation + storage exempted from AAP/AAC</td></tr>
+</table>
+
+<h3>A real chain — Avutarda Solar (50,16 MW, Madrid)</h3>
+<p class="small muted">Five BOE entries, two years, two DGs, one project. The
+<code>project_linker</code>'s job is to stitch these — name + applicant + cadastral refs are the
+hooks.</p>
+<table>
+<tr><th>Date</th><th>Identifier</th><th>Act</th><th>DG / Body</th></tr>
+<tr><td>2023-01-31</td><td>BOE núm. 26 (referenced)</td><td>DIA favorable</td><td>MITECO DGCEA</td></tr>
+<tr><td>2023-05-08</td><td>BOE núm. 109 (referenced)</td><td>AAP original (125 → 58.89 MW)</td><td>MITECO DGPEM</td></tr>
+<tr><td>2023-06-20</td><td>BOE anuncio (referenced)</td><td>Información pública de modificación</td><td>Subdelegación</td></tr>
+<tr><td><b>2024-07-10</b></td><td><b><a class="link" href="https://www.boe.es/diario_boe/txt.php?id=BOE-A-2024-15085">BOE-A-2024-15085</a></b></td><td><b>AAP modificada + AAC + DUP</b> (final 50.09 MW)</td><td>MITECO DGPEM</td></tr>
+<tr><td>2025</td><td><a class="link" href="https://www.boe.es/diario_boe/buscar/doc.php?id=BOE-A-2025-1552">BOE-A-2025-1552</a></td><td>Corrección de errores</td><td>MITECO DGPEM</td></tr>
+</table>
+
+<!-- ───────────────────────────── 10 ───────────────────────────── -->
+<h2 id="schema">10 · How a BOE document maps to our schema</h2>
+<pre><code>BOE daily edition
+  ├─ sumario tree walked (sección → departamento → epígrafe → item)
+  ├─ relevance filter (departamento regex + title keywords)
+  └─ per surviving item, fetch xml.php?id={identifier}
+                                   ▼
+  source_document                  (one row per act)
+    source_id      = 'boe'
+    external_id    = BOE-A-{Y}-{seq}   or   BOE-B-{Y}-{seq}
+    url            = txt.php URL  (canonical for non-ELI items)
+    published_at   = metadatos.fecha_publicacion
+    body           = &lt;texto&gt; UTF-8 string
+    metadata       = {section, departamento_codigo, departamento, eli?, pdf_url}
+        │
+        ▼ extractor  (boe-v4 prompt — XML-aware; ships in phase-0)
+  permit_event                     (the dated regulatory act)
+    event_type     ∈ {PC_OPENED, RESOLUTION_GRANTED, DIA_PUBLISHED, ANUNCIO_PROVIDED, …}
+    event_outcome  ∈ {pendiente, aprobada, denegada, desistida}   ← DIA fav/desf lives here
+    project_id     → resolved by project_linker (name + applicant + cadastral)
+    developer_id   → resolved by developer_linker (CIF + name verbatim)
+        ├─ permit_milestone   (hitos 1–5 from RDL 23/2020, with due_date)
+        ├─ substation_mention (kind ∈ {grid_connection, developer_built}; only grid_connection
+        │                       joins CNMC capacity tables)
+        └─ project_documentation (if anuncio embeds ssweb.seap.minhap.es/almacen/… → T1.6 pointer)
+</code></pre>
+
+<p class="small muted">Already operational: BOE loader at <code>archive/phase-0/ingestion/boe/</code>
+and extractor at <code>archive/phase-0/extraction/boe_extractor.py</code>
+(<code>MODEL_VERSION = "boe-v4"</code>, <code>SCHEMA_VERSION = "boe-v5"</code>). Phase 1 does <em>not</em>
+re-implement BOE; T1.6 extends the existing extractor with the MITECO-pointer regex, mirroring
+the <code>cadastral_parser.py</code> pattern.</p>
+
+<!-- ───────────────────────────── 11 ───────────────────────────── -->
+<h2 id="caveats">11 · Caveats &amp; open questions</h2>
+<div class="call warn"><b>Solidly confirmed vs still inferred</b>
+<ul style="margin:6px 0 0">
+<li><span class="pill real">live-verified</span> The APIs, identifier shapes, sumario hierarchy,
+XML schema, ministerial structure, hitos identities, competence rule, info-pública durations, and
+the dossier URL pattern (<code>ssweb.seap.minhap.es/almacen/…</code>) all come from primary BOE
+texts or live-fetched documents in 2025–2026.</li>
+<li><span class="pill infer">domain</span> Cohort-indexed deadline figures (e.g. 22-month DIA
+deadline) are taken from RDL 23/2020 + RDL 29/2021 extensions; secondary-source corroboration (DLA
+Piper, Uría circulars). Not re-derived from the consolidated text article-by-article.</li>
+<li><span class="pill infer">domain</span> The "AEX is usually not gazetted" finding is from
+absence-of-evidence in this week's search — worth a focused probe before relying on it.</li>
+</ul></div>
+
+<table>
+<tr><th>Open question</th><th>Status</th></tr>
+<tr><td><b>Q1 · Dossier-URL pattern.</b> <span class="pill real">resolved 2026-05-28</span> A probe of seven 2026 BOE-B anuncios shows three patterns coexist (see §7). <code>miteco-project-documentation-synthesis.md</code> updated to match. T1.6 extractor must handle <code>almacen.redsara.es</code>, <code>ssweb.seap.minhap.es</code>, mptmd-index-only, and <code>acortar.link</code> shortener resolution.</td><td>Resolved · spec updated</td></tr>
+<tr><td><b>Q2 · "60-day validity" of the warehouse link.</b> <span class="pill real">resolved 2026-05-28</span> Only 1 of 7 anuncios printed an explicit expiry, and it was 73 days (BOE-B-2026-15230). Treat as planning approximation, not constant. T2.6 should set <code>validity_until</code> only when the body actually states it; null otherwise.</td><td>Resolved · spec updated</td></tr>
+<tr><td><b>Q3 · Daily discovery cadence.</b> Sundays produce no edition; holidays do. Confirm our scheduler skips Sundays cleanly (otherwise the loader emits a 404-as-empty-day for every Sunday).</td><td>Spot-check Phase-0 loader behavior</td></tr>
+<tr><td><b>Q4 · Cohort logic in <code>permit_milestone</code>.</b> Deadlines are cohort-indexed (2018-2020 cohort from 25/06/2020; later cohorts from access-permit date). The phase-0 extractor encodes a single offset per <code>milestone_code</code>; ensure the <em>cohort</em> dimension is captured before the model predicts caducidad.</td><td>Data-model open Q</td></tr>
+<tr><td><b>Q5 · RDL 7/2026 45-day window.</b> If post-March-2026 anuncios use 45 days, ensure the alegaciones-deadline computation handles the cutover.</td><td>Extractor calibration</td></tr>
+<tr><td><b>Q6 · Andalucía <code>acortar.link</code> resolution.</b> Multiple 2026 BOE-B anuncios from Sevilla embed <code>acortar.link/kC8BCu</code> (a Bit.ly-style shortener) instead of a direct file URL. T1.6 needs a HEAD-follow-redirect step to discover whichever backend it points to.</td><td>Discovered during Q1 probe</td></tr>
+</table>
+
+<div class="call q"><b>Two remaining cheap wins</b>
+(1) HEAD-follow the Andalucía <code>acortar.link</code> redirect chain to identify which backend
+(redsara, seap, or other) those anuncios actually route to. (2) Pull one Section III BOE-A from
+DGPEM in 2026 that grants AAP for a &gt;50 MW renewable, to confirm grants don't also embed
+warehouse URLs (May probe only found a denial — BOE-A-2026-2315 — which had none).</div>
+
+</main>
+</div>
+
+<footer>
+  <p><strong>BOE dataset deep dive</strong> · Phase 1 · compiled 2026-05-28. Companion to
+  <code>docs/boa-dataset-deep-dive.html</code>. Grounds <code>archive/phase-0/ingestion/boe/</code>,
+  <code>archive/phase-0/extraction/boe_extractor.py</code>, and
+  <code>docs/requirements/miteco-project-documentation-synthesis.md</code> with the regulatory
+  process behind the data. Primary sources: Ley 24/2013 (BOE-A-2013-13645), Ley 21/2013
+  (BOE-A-2013-12913), RDL 23/2020 (BOE-A-2020-6621), RD 1955/2000 (BOE-A-2000-24019), RD 1183/2020
+  (BOE-A-2020-17278), RDL 7/2025 (BOE-A-2025-12857); BOE Open Data programme at
+  boe.es/datosabiertos; sample anuncios listed in §9.</p>
+</footer>
+<script>
+  (() => {
+    const links = document.querySelectorAll('nav a[href^="#"]');
+    if (!links.length) return;
+    const map = new Map();
+    links.forEach(a => {
+      const id = a.getAttribute('href').slice(1);
+      const t = document.getElementById(id);
+      if (t) map.set(t, a);
+    });
+    const setActive = (a) => {
+      links.forEach(l => l.classList.remove('active'));
+      a.classList.add('active');
+    };
+    const obs = new IntersectionObserver((entries) => {
+      const visible = entries.filter(e => e.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      if (visible[0]) {
+        const a = map.get(visible[0].target);
+        if (a) setActive(a);
+      }
+    }, { rootMargin: '-25% 0px -65% 0px', threshold: 0 });
+    map.forEach((_, t) => obs.observe(t));
+  })();
+</script>
+</body>
+</html>

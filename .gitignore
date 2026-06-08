@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Local-mode ingestion outputs (writer dumps PDFs + .meta.json sidecars here)
+out/
+
+# WSL/Windows metadata files
+*:Zone.Identifier
+
+# Claude Code workspace state (memory, transcripts, plans live elsewhere)
+.claude/
+
+# Editor / OS junk
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo

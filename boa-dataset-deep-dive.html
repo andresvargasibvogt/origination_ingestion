@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BOA dataset — deep dive</title>
+<style>
+  :root{
+    --bg:#f4f7fb;
+    --paper:#ffffff;
+    --ink:#0b1220;              /* near-black body text */
+    --ink-soft:#1e293b;         /* slate-800 secondary */
+    --muted:#475569;            /* slate-600 — WCAG AA on white */
+    --line:#dbe2ec;
+    --line-soft:#eef2f7;
+    --accent:#0e7490;           /* cyan-700 */
+    --accent-ink:#155e75;       /* darker for links */
+    --accent-bg:#ecfeff;
+    --ok-bg:#f0fdf4; --ok-ink:#166534; --ok-border:#22c55e;
+    --warn-bg:#fff7ed; --warn-ink:#9a3412; --warn-border:#fb923c;
+    --bad-ink:#b91c1c;
+    --q-bg:#faf5ff; --q-ink:#6b21a8; --q-border:#a855f7;
+    --code-bg:#eef2f7; --code-ink:#0b1220;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    font:16.5px/1.7 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    background:var(--bg);
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+
+  /* Header */
+  header{
+    background:
+      radial-gradient(120% 100% at 0% 0%, #134e5e 0%, #0e7490 45%, #155e75 100%);
+    color:#fff;
+    padding:56px 7vw 48px;
+    border-bottom:1px solid rgba(255,255,255,.08);
+  }
+  header > *{max-width:1180px;width:100%;margin-left:auto;margin-right:auto}
+  header .kicker{
+    text-transform:uppercase;
+    letter-spacing:.18em;
+    font-size:12px;
+    font-weight:700;
+    margin:0 0 14px;
+    color:#a7f3d0;
+  }
+  header h1{
+    margin:0 0 14px;
+    font-size:38px;
+    line-height:1.12;
+    letter-spacing:-.01em;
+    font-weight:700;
+  }
+  header p{
+    margin:8px 0 0;
+    max-width:72ch;
+    color:#e6f6fa;
+    font-size:17px;
+    line-height:1.6;
+  }
+  header p.small{
+    color:#cbe9f0;
+    font-size:13px;
+    margin-top:18px;
+  }
+  header code{
+    background:rgba(255,255,255,.14);
+    color:#ecfeff;
+    padding:1px 6px;
+    border-radius:4px;
+    font-size:12.5px;
+    border:none;
+  }
+
+  /* Layout */
+  .wrap{
+    display:grid;
+    grid-template-columns:260px minmax(0,1fr);
+    gap:0;
+    align-items:start;
+    max-width:1340px;
+    margin:0 auto;
+    background:var(--paper);
+  }
+
+  /* Nav */
+  nav{
+    position:sticky;
+    top:0;
+    align-self:start;
+    max-height:100vh;
+    overflow:auto;
+    padding:32px 14px 32px 22px;
+    font-size:13.5px;
+    border-right:1px solid var(--line);
+    background:var(--paper);
+  }
+  nav a{
+    display:block;
+    color:var(--ink-soft);
+    text-decoration:none;
+    padding:6px 10px;
+    border-radius:6px;
+    line-height:1.4;
+    border-left:2px solid transparent;
+    margin-left:-2px;
+    transition:background .12s ease, color .12s ease;
+  }
+  nav a:hover{
+    background:var(--accent-bg);
+    color:var(--accent-ink);
+  }
+  nav a.active{
+    background:var(--accent-bg);
+    color:var(--accent-ink);
+    border-left-color:var(--accent);
+    font-weight:600;
+  }
+  nav .sec{
+    font-weight:700;
+    color:var(--ink);
+    margin:18px 0 6px;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.1em;
+    padding:0 10px;
+  }
+  nav .sec:first-child{margin-top:0}
+
+  /* Main */
+  main{
+    padding:48px clamp(28px,5vw,72px) 100px;
+    max-width:1040px;
+  }
+
+  /* Typography */
+  h2{
+    font-size:27px;
+    margin:60px 0 10px;
+    padding-top:30px;
+    border-top:1px solid var(--line);
+    letter-spacing:-.012em;
+    line-height:1.25;
+    color:var(--ink);
+    font-weight:700;
+  }
+  h2:first-of-type{border-top:none;padding-top:4px;margin-top:8px}
+  h3{
+    font-size:19.5px;
+    margin:32px 0 8px;
+    color:var(--ink);
+    letter-spacing:-.005em;
+  }
+  h4{
+    font-size:14.5px;
+    margin:20px 0 6px;
+    color:var(--ink-soft);
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    font-weight:700;
+  }
+  p,li{color:var(--ink)}
+  p{margin:10px 0 12px}
+  ul,ol{padding-left:24px}
+  li{margin:5px 0}
+  strong{color:var(--ink)}
+
+  .lead{
+    font-size:18.5px;
+    line-height:1.65;
+    color:var(--ink-soft);
+    margin:10px 0 18px;
+  }
+  .muted{color:var(--muted)}
+  .small{font-size:13.5px}
+
+  /* Links */
+  a.link{
+    color:var(--accent-ink);
+    word-break:break-word;
+    overflow-wrap:anywhere;
+    text-decoration-color:rgba(14,116,144,.45);
+    text-underline-offset:2px;
+  }
+  a.link:hover{color:#083344;text-decoration-color:var(--accent)}
+
+  /* Code */
+  code{
+    background:var(--code-bg);
+    padding:1.5px 6px;
+    border-radius:4px;
+    font:13.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    color:var(--code-ink);
+    border:1px solid #e2e8f0;
+  }
+  pre{
+    background:#0b1220;
+    color:#e2e8f0;
+    padding:18px 20px;
+    border-radius:12px;
+    overflow:auto;
+    font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    border:1px solid #1e293b;
+    box-shadow:0 1px 2px rgba(15,23,42,.06);
+    margin:14px 0 18px;
+  }
+  pre code{background:none;color:inherit;padding:0;border:none}
+
+  /* Tables */
+  table{
+    border-collapse:separate;
+    border-spacing:0;
+    width:100%;
+    margin:16px 0 20px;
+    font-size:14.5px;
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:12px;
+    overflow:hidden;
+    box-shadow:0 1px 2px rgba(15,23,42,.03);
+  }
+  th,td{
+    border-bottom:1px solid var(--line-soft);
+    padding:11px 14px;
+    text-align:left;
+    vertical-align:top;
+    color:var(--ink);
+  }
+  th{
+    background:#f1f5f9;
+    font-weight:700;
+    font-size:12.5px;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    color:var(--ink-soft);
+    border-bottom:1px solid var(--line);
+  }
+  tr:last-child td{border-bottom:none}
+  tr:nth-child(even) td{background:#fafbfd}
+
+  /* Callouts */
+  .call{
+    border-left:4px solid var(--accent);
+    background:var(--accent-bg);
+    padding:14px 18px;
+    border-radius:0 10px 10px 0;
+    margin:18px 0;
+    color:var(--ink);
+  }
+  .call b{display:block;margin-bottom:5px;color:var(--ink);font-weight:700}
+  .call.key{border-color:var(--ok-border);background:var(--ok-bg)}
+  .call.key b{color:var(--ok-ink)}
+  .call.warn{border-color:var(--warn-border);background:var(--warn-bg)}
+  .call.warn b{color:var(--warn-ink)}
+  .call.q{border-color:var(--q-border);background:var(--q-bg)}
+  .call.q b{color:var(--q-ink)}
+
+  /* Pills */
+  .pill{
+    display:inline-block;
+    font-size:10.5px;
+    font-weight:700;
+    padding:2px 9px;
+    border-radius:999px;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    vertical-align:middle;
+    border:1px solid transparent;
+    line-height:1.7;
+  }
+  .pill.real{background:#dcfce7;color:#14532d;border-color:#86efac}
+  .pill.synth{background:#fef3c7;color:#713f12;border-color:#fde68a}
+  .pill.infer{background:#ede9fe;color:#5b21b6;border-color:#ddd6fe}
+
+  /* Cards / grid */
+  .grid2{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+    margin:18px 0;
+  }
+  .card{
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:18px 20px;
+    background:var(--paper);
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+  }
+  .card h4{margin-top:0;color:var(--ink-soft)}
+  .card pre{margin:10px 0}
+
+  /* Flow diagram */
+  .flow{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    align-items:stretch;
+    margin:18px 0;
+    font-size:13.5px;
+  }
+  .flow .node{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:11px 14px;
+    color:var(--ink);
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+    min-width:140px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+  }
+  .flow .node .small{color:var(--muted);display:block;margin-top:3px}
+  .flow .node.g1{background:#fef9c3;border-color:#ca8a04}
+  .flow .node.g2{background:#ecfeff;border-color:#0e7490}
+  .flow .arr{
+    color:var(--muted);
+    font-weight:700;
+    align-self:center;
+    font-size:16px;
+  }
+
+  /* Footer */
+  footer{
+    padding:32px 7vw;
+    color:var(--muted);
+    font-size:13.5px;
+    border-top:1px solid var(--line);
+    background:var(--paper);
+  }
+  footer p{color:var(--muted);margin:0;max-width:92ch;line-height:1.6}
+  footer strong{color:var(--ink)}
+
+  /* Selection */
+  ::selection{background:#bae6fd;color:#0b1220}
+
+  /* Responsive */
+  @media (max-width:980px){
+    .wrap{grid-template-columns:1fr}
+    nav{
+      position:static;
+      max-height:none;
+      border-right:none;
+      border-bottom:1px solid var(--line);
+      padding:18px 6vw;
+    }
+    main{padding:32px 6vw 60px}
+    .grid2{grid-template-columns:1fr}
+    header{padding:42px 6vw 36px}
+    header h1{font-size:28px}
+    header p{font-size:15.5px}
+    h2{font-size:23px;margin-top:44px;padding-top:24px}
+  }
+</style>
+</head>
+<body>
+<header>
+  <p class="kicker">Phase 1 · Source deep dive · Group 1 (Pipeline)</p>
+  <h1>BOA — Boletín Oficial de Aragón</h1>
+  <p>How the dataset is generated each day, who the actors are, what the permit statuses
+  (AAP / AAC / DIA …) actually mean, when MITECO/regional dossiers appear, and how all of
+  it lands in our schema.</p>
+  <p class="small">Compiled 2026-05-27 · grounds the Sprint 0 spike
+  <code>docs/spikes/sprint-0/boa-shape.md</code> with the regulatory process behind the bytes.</p>
+</header>
+
+<div class="wrap">
+<nav>
+  <div class="sec">Orientation</div>
+  <a href="#what">1 · What BOA is</a>
+  <a href="#daily">2 · How it's generated daily</a>
+  <a href="#actors">3 · Who creates the "projects"</a>
+  <div class="sec">The permit lifecycle</div>
+  <a href="#lifecycle">4 · Lifecycle &amp; statuses</a>
+  <a href="#status-q">5 · Does status = all developers?</a>
+  <a href="#competence">6 · Regional vs national (50 MW)</a>
+  <div class="sec">Dossiers</div>
+  <a href="#miteco">7 · When dossiers are created</a>
+  <div class="sec">Engineering</div>
+  <a href="#access">8 · Technical access shape</a>
+  <a href="#links">9 · Sample links</a>
+  <a href="#schema">10 · Mapping to our schema</a>
+  <a href="#caveats">11 · Caveats &amp; open Qs</a>
+</nav>
+
+<main>
+
+<p class="lead">BOA is the legally-binding regulatory gazette of the Government of Aragón.
+For us it is the second Group-1 pipeline source after BOE, chosen because Aragón is the
+team's Forestalia/Maestrazgo competitive territory. The critical thing to internalise:
+<strong>BOA does not contain "projects." It contains administrative <em>acts</em> about
+projects.</strong> Everything below follows from that.</p>
+
+<p class="small muted">Provenance legend used throughout:
+<span class="pill real">live-verified</span> confirmed against the source or a primary
+regulatory text this week ·
+<span class="pill synth">spike</span> from our Sprint 0 spike (one real PDF + synthesised
+examples) ·
+<span class="pill infer">domain</span> Spanish-permitting domain knowledge, not yet
+checked against a live BOA renewable doc.</p>
+
+<!-- ───────────────────────────── 1 ───────────────────────────── -->
+<h2 id="what">1 · What BOA is</h2>
+<p><span class="pill real">live-verified</span> The <strong>Boletín Oficial de Aragón</strong>
+(<a class="link" href="https://www.boa.aragon.es/">boa.aragon.es</a>) is the official journal of
+the Comunidad Autónoma de Aragón, published by the Departamento de Presidencia. It carries the
+legally-binding text of regional laws, decrees, orders, administrative <em>resoluciones</em>,
+environmental-impact decisions (DIAs), and public-consultation openings. A document has no legal
+effect until it appears here — publication <em>is</em> the act of notification.</p>
+
+<p>Structurally it mirrors the BOE: five Roman-numeral sections, each grouped by
+<code>DEPARTAMENTO DE …</code> headings. For renewables only two sections and two departments
+matter:</p>
+
+<table>
+<tr><th>Section</th><th>Contains</th><th>Renewable relevance</th></tr>
+<tr><td><b>I.</b> Disposiciones Generales</td><td>Laws, decrees, orders of general application</td><td>Rare — framework changes only</td></tr>
+<tr><td><b>II.</b> Autoridades y personal</td><td>HR / appointments</td><td>None</td></tr>
+<tr><td><b>III.</b> Otras disposiciones y acuerdos</td><td>Resolutions, administrative authorisations</td><td><b>High</b> — AAP/AAC grants &amp; DIAs land here</td></tr>
+<tr><td><b>IV.</b> Administración de Justicia</td><td>Court notices</td><td>None</td></tr>
+<tr><td><b>V.</b> Anuncios</td><td>Public-consultation openings, EIA info-pública, procurement</td><td><b>High</b> — PC openings &amp; info-pública live here</td></tr>
+</table>
+
+<p>The two departments that issue renewable acts:</p>
+<ul>
+<li><strong>Departamento de Industria, Competitividad y Desarrollo Empresarial</strong> — the
+<em>órgano sustantivo</em> (substantive body). Grants the administrative authorisations (AAP/AAC)
+and opens info-pública on access requests. In practice acts are signed by the
+<em>Servicio Provincial</em> of Zaragoza / Huesca / Teruel.</li>
+<li><strong>INAGA — Instituto Aragonés de Gestión Ambiental</strong> (under the Departamento de
+Agricultura, Ganadería y Medio Ambiente) — the <em>órgano ambiental</em>. Opens environmental
+info-pública and issues the DIA. <span class="pill real">live-verified</span> Real INAGA DIAs for
+hybrid PV+wind projects ("Entreviso", "Rané") appear in BOA in 2024–2025.</li>
+</ul>
+
+<!-- ───────────────────────────── 2 ───────────────────────────── -->
+<h2 id="daily">2 · How the dataset is generated each day</h2>
+<p>BOA is produced by an editorial/publication chain, not an API. The daily lifecycle:</p>
+
+<div class="flow">
+  <span class="node">Dept. submits act</span><span class="arr">→</span>
+  <span class="node">Editorial typesetting<br><span class="small muted">Adobe InDesign</span></span><span class="arr">→</span>
+  <span class="node">Assembled bulletin<br><span class="small muted">sections I–V, CSV codes</span></span><span class="arr">→</span>
+  <span class="node g2">Published as PDFs<br><span class="small muted">via BRSCGI</span></span><span class="arr">→</span>
+  <span class="node g2">Legally in force</span>
+</div>
+
+<ul>
+<li><span class="pill real">live-verified</span> <strong>Cadence:</strong> daily Monday–Friday,
+plus urgent <em>extraordinarios</em> that carry their own numbering. Each issue has a number
+(e.g. <em>Número 186, 25 Sep 2025</em>) and a year ("AÑO XL").</li>
+<li><span class="pill synth">spike</span> <strong>Each document gets a CSV code</strong>
+(Código de Verificación Segura) of the form <code>BOA{YYYY}{MM}{DD}{NN}</code> — date plus a
+within-day serial. This is deterministic and is what we use as
+<code>source_document.external_id</code>.</li>
+<li><span class="pill synth">spike</span> <strong>Bodies are PDFs</strong> (BOE is XML).
+Produced server-side by Adobe InDesign, served via <code>BRSCGI?CMD=VEROBJ&amp;MLKOB=…&amp;type=pdf</code>.
+Byte-stable once published; no URL rotation. We extract text with PyMuPDF.</li>
+<li><span class="pill synth">spike</span> <strong>There is no clean list API.</strong> The
+SPARQL endpoint on <code>opendata.aragon.es</code> is stale since 2025-01-23; the CKAN dataset
+exposes no per-day URL; the only operational interface is the Angular SPA calendar. So the loader
+must <em>discover</em> each day's document IDs by scraping the SPA's date-scoped results page
+(MLKOB IDs are internal DB IDs, not derivable from the date).</li>
+</ul>
+
+<div class="call key"><b>The key mental model</b>
+A day of BOA = a bundle of independently-authored administrative acts, glued into one numbered PDF
+bulletin by an editorial process. We reverse that: split the bulletin back into per-act documents,
+classify each, and extract the renewable-relevant ones into typed events.</div>
+
+<!-- ───────────────────────────── 3 ───────────────────────────── -->
+<h2 id="actors">3 · Who creates the "projects" in the gazette</h2>
+<p><span class="pill infer">domain</span> <strong>Nobody does — and this is the most important
+conceptual point in this whole document.</strong> A gazette entry is an <em>act of an
+administration about an expediente</em>. The "project" as we model it is a reconstruction we build
+by linking many acts that share a project name + applicant + cadastral references. The chain of
+actors:</p>
+
+<table>
+<tr><th>Actor</th><th>Role</th><th>What they produce in BOA</th></tr>
+<tr><td><b>Promotor / titular</b><br>(the developer)</td><td>Files the application (<em>solicitud</em>) for a specific installation. <em>Creates the underlying project — but off-gazette, as a private filing.</em></td><td>Nothing directly. They are <em>named</em> in others' acts.</td></tr>
+<tr><td><b>Órgano sustantivo</b><br>(Dept. de Industria → Servicio Provincial)</td><td>Processes the authorisation; opens info-pública on the access request; grants AAP &amp; AAC.</td><td>RESOLUCIÓN (Sec. III) and ANUNCIO de información pública (Sec. V)</td></tr>
+<tr><td><b>Órgano ambiental</b><br>(INAGA, Aragón)</td><td>Runs the environmental assessment; opens EIA info-pública; formulates the DIA.</td><td>ANUNCIO de información pública (Sec. V) and RESOLUCIÓN/DIA (Sec. III)</td></tr>
+<tr><td><b>Gestor de red</b><br>(REE transmission / Endesa e-distribución)</td><td>Grants the access &amp; connection permit (<em>permiso de acceso y conexión</em>) at a substation.</td><td>Mostly <em>not</em> in BOA — lives in REE/Endesa capacity tables (our Group 2). The grid node is the join key.</td></tr>
+</table>
+
+<div class="call"><b>Implication for our pipeline</b>
+The developer "creates" the project by filing; the administrations then emit a stream of dated acts
+about it over 2–5 years. Our <code>project</code> entity is a rollup; the <code>project_linker</code>
+stitches a project name like <em>"Parque Eólico Sierra del Pobo II"</em> across its PC opening, its
+DIA, and its AAP/AAC grant — events that may sit months apart and be signed by different bodies.</div>
+
+<!-- ───────────────────────────── 4 ───────────────────────────── -->
+<h2 id="lifecycle">4 · The permit lifecycle &amp; what each status means</h2>
+<p><span class="pill real">live-verified</span> A Spanish renewable project clears a defined
+sequence of permits. The order matters because <em>each one is a separate BOA event</em>, and
+RDL&nbsp;23/2020 attaches a statutory deadline (<em>hito</em>) to each — miss one and the grid
+access permit expires and the economic guarantee is executed.</p>
+
+<table>
+<tr><th>#</th><th>Status / act</th><th>Spanish</th><th>Who issues it</th><th>RDL 23/2020 deadline*</th><th>Our <code>event_type</code></th></tr>
+<tr><td>0</td><td>Access &amp; connection permit</td><td>Permiso de acceso y conexión</td><td>REE / distributor</td><td>start of the clock</td><td><span class="muted">(Group 2)</span></td></tr>
+<tr><td>1</td><td>Application admitted + info-pública opens</td><td>Información pública</td><td>Industria &amp; INAGA</td><td>3 months</td><td><code>PC_OPENED</code></td></tr>
+<tr><td>2</td><td>Favourable environmental decision</td><td>Declaración de Impacto Ambiental (DIA)</td><td>INAGA (regional)</td><td>18 months</td><td><code>DIA_PUBLISHED</code></td></tr>
+<tr><td>3</td><td>Prior administrative authorisation</td><td>Autorización Administrativa Previa (AAP)</td><td>Dept. de Industria</td><td>21 months</td><td><code>RESOLUTION_GRANTED</code></td></tr>
+<tr><td>4</td><td>Construction authorisation</td><td>Autorización Administrativa de Construcción (AAC)</td><td>Dept. de Industria</td><td>24 months</td><td><code>RESOLUTION_GRANTED</code></td></tr>
+<tr><td>5</td><td>Operating authorisation</td><td>Autorización de Explotación (AEX)</td><td>Dept. de Industria</td><td>5 years</td><td><code>RESOLUTION_GRANTED</code></td></tr>
+</table>
+<p class="small muted">*Deadlines run from the relevant reference date set by RDL 23/2020
+(broadly: from grant of the access permit). They are the <em>hitos administrativos</em> 1–5 we
+model as <code>permit_milestone</code> rows. RDL 7/2025 recently exempted installations ≤500 kW
+from needing AAP/AAC — irrelevant at utility scale but worth knowing.</p>
+
+<h3>How a status is encoded in BOA</h3>
+<p><span class="pill synth">spike</span> The (section × department) cross-reference tells us the
+event type without reading the body:</p>
+<table>
+<tr><th></th><th>Dept. de INDUSTRIA</th><th>INAGA / Medio Ambiente</th></tr>
+<tr><th>Sec. III (resoluciones)</th><td>AAP / AAC granted → <code>RESOLUTION_GRANTED</code></td><td>DIA → <code>DIA_PUBLISHED</code></td></tr>
+<tr><th>Sec. V (anuncios)</th><td>Notice / info-pública on access → <code>ANUNCIO_PROVIDED</code></td><td>EIA info-pública opens → <code>PC_OPENED</code></td></tr>
+</table>
+<p>A DIA additionally carries an <strong>outcome</strong>: <code>FAVORABLE</code>,
+<code>DESFAVORABLE</code>, or <code>FAVORABLE&nbsp;CONDICIONADA</code>. We split this into
+<code>permit_event.event_outcome</code> — a <em>desfavorable</em> DIA is a project-killer and a
+direct trigger for our predicted-capacity-emergence model.</p>
+
+<!-- ───────────────────────────── 5 ───────────────────────────── -->
+<h2 id="status-q">5 · Does the status (AAP/AAC/DIA) reflect <em>all</em> developers who applied?</h2>
+<div class="call key"><b>No. A BOA status is always single-expediente, single-promoter.</b>
+Each announcement resolves <em>one</em> project promoted by <em>one</em> developer. There is no
+such thing in BOA as a node-level or "all-applicants" status.</div>
+
+<p><span class="pill infer">domain</span> Why this matters, concretely. Several developers can hold
+or seek capacity at the <strong>same substation</strong> — that is the normal competitive
+situation, and where capacity is scarce it becomes a formal <em>concurso</em> (contest). Each
+applicant runs an independent <em>expediente</em> that progresses through the milestones on its own
+clock. So at a single node you might simultaneously have:</p>
+<ul>
+<li>Developer A — DIA <em>favorable</em> obtained, AAP granted (milestone 3 cleared)</li>
+<li>Developer B — still in información pública (milestone 1)</li>
+<li>Developer C — <em>desistimiento</em> / DIA <em>desfavorable</em> (dropped out)</li>
+</ul>
+<p>BOA reports each of these as a separate dated act. It never emits a combined "status of
+substation X." That node-level competitive picture is something <strong>we synthesise</strong> —
+it does not exist in any single source.</p>
+
+<div class="call"><b>This is exactly why our data model anchors on substation + access_date.</b>
+We attach every per-expediente event (<code>permit_event</code> → <code>substation_mention</code>)
+to the grid node, then read across them to assemble the node view BOA never gives you:
+"who is queued at this substation, at what milestone, with how much MW." The capacity-contention
+read and the predicted-emergence view both depend on this reassembly. A
+<code>contest_reservation</code> flag marks nodes under formal <em>concurso</em>, which gates the
+prediction (reserved capacity does not freely re-emerge).</div>
+
+<p><strong>Corollary:</strong> when you see "AAC granted" in BOA, read it as "this developer's
+expediente reached milestone 4," <em>not</em> "this substation is now built out." Two developers at
+the same node can both be mid-pipeline; one getting AAC says nothing about the other's standing or
+about residual free capacity — for that you need the REE/Endesa capacity snapshot (Group 2).</p>
+
+<!-- ───────────────────────────── 6 ───────────────────────────── -->
+<h2 id="competence">6 · Why BOA at all — regional vs national competence</h2>
+<p><span class="pill real">live-verified</span> Spain splits permitting authority by installed
+capacity and geography:</p>
+<table>
+<tr><th></th><th>Regional competence → <b>BOA</b></th><th>State competence → <b>BOE</b></th></tr>
+<tr><td>Threshold</td><td>≤ 50 MW, within one autonomous community</td><td>&gt; 50 MW, or spanning &gt;1 CCAA, or offshore</td></tr>
+<tr><td>Substantive body</td><td>Dept. de Industria, Gobierno de Aragón</td><td>DG Política Energética y Minas (MITECO)</td></tr>
+<tr><td>Environmental body (DIA)</td><td>INAGA</td><td>DG Calidad y Evaluación Ambiental (MITECO)</td></tr>
+<tr><td>Dossier warehouse</td><td>Aragón portal (<code>aragon.es</code>)</td><td>MITECO portals → <code>almacen.redsara.es</code></td></tr>
+</table>
+<p>So BOA and BOE are not redundant — they cover <em>different projects</em> partitioned by the
+50 MW line. A 250 MW PV plant is BOE+MITECO; a 49.5 MW plant (a very common deliberately-sized
+figure) is BOA+INAGA. This is also why dossier capture has two source paths (§7).</p>
+
+<!-- ───────────────────────────── 7 ───────────────────────────── -->
+<h2 id="miteco">7 · When are the dossiers created (and by whom)?</h2>
+<p>The "dossier" is the full technical file — Memoria, Estudio de Impacto Ambiental, SHP boundary,
+Separatas de afectados, EM-fields and SyS studies (~100–300 MB). Your question "when does MITECO
+create the dossiers" has a precise answer:</p>
+
+<div class="call key"><b>The dossier is published at the moment información pública opens — i.e.
+simultaneously with the PC_OPENED event.</b>
+It is not created at application time (that filing is private), nor at DIA/AAP time. It is posted so
+the public can review the project and file <em>alegaciones</em> during the consultation window
+(typically 30 days). <span class="pill infer">domain</span></div>
+
+<p>So the dossier-creation event and our <code>PC_OPENED</code> event are the <em>same</em> moment.
+Two source paths depending on competence:</p>
+<ul>
+<li><strong>National (&gt;50 MW) → MITECO.</strong> <span class="pill synth">spike</span> The BOE
+anuncio embeds a per-CCAA MITECO portal URL (<code>mptmd.gob.es/portal/delegaciones_gobierno/…</code>).
+That portal links to a per-shipment warehouse URL
+<code>almacen.redsara.es/sending/public/{uuid}</code> holding the files. The warehouse page states a
+<em>reception date</em> and a <em>validity-until</em> date.</li>
+<li><strong>Regional (≤50 MW) → Aragón.</strong> <span class="pill real">live-verified</span> The
+BOA anuncio points to the Aragón catalogue
+<a class="link" href="https://www.aragon.es/-/proyectos-en-informacion-publica">"Proyectos en
+información pública"</a>, filterable by infrastructure type, open/closed claim period, and province.</li>
+</ul>
+
+<div class="call warn"><b>The operational pain point — and why we capture it.</b>
+Dossiers live for ~60 days from the reception date (the public-consultation window), then
+<strong>disappear</strong>. <span class="pill synth">spike</span> Nothing IBV uses today tracks that
+expiry. Our Phase 1 plan: capture the pointer at PC_OPENED (T1.6), probe the manifest daily (T2.6),
+surface an "expiring this week" panel (T4.7), and one-click-fetch the archive into Azure Blob before
+it vanishes (T3.5). Real worked example in the deck: <em>PFot-ALM-151 Los Arcos Hybridisation</em> —
+reception 08/05/2026, validity 03/07/2026, ~233 MB across 5 files.</div>
+
+<p class="small muted">Phase 1 runs the manifest probe for Aragón only
+(<code>where ccaa = 'aragon'</code>); non-Aragón MITECO URLs are still captured opportunistically but
+not probed. Full 17-CCAA coverage and any dossier <em>content</em> extraction (Memoria / SHP /
+Separatas) are deferred to Phase 2.</p>
+
+<!-- ───────────────────────────── 8 ───────────────────────────── -->
+<h2 id="access">8 · Technical access shape (how we ingest it)</h2>
+<div class="grid2">
+  <div class="card"><h4>Document body <span class="pill synth">spike</span></h4>
+  <p class="small">Stable PDF fetch:</p>
+  <pre><code>GET …/BRSCGI?CMD=VEROBJ
+    &amp;MLKOB={13-digit id}&amp;type=pdf
+→ 200, application/pdf, %PDF-1.7</code></pre>
+  <p class="small">MLKOB is an internal DB id — <b>not</b> derivable from the date. PyMuPDF extracts
+  ~32K chars cleanly across 8 pages.</p></div>
+
+  <div class="card"><h4>Daily discovery <span class="pill synth">spike</span></h4>
+  <p class="small">No list API. Scrape the SPA date page:</p>
+  <pre><code>…/#/resultados-fecha
+   ?PUBL-C={YYYYMMDD}
+   &amp;SECC-C=Disposiciones+o+Anuncios
+   &amp;NUMB-C={normal|extraordinario}</code></pre>
+  <p class="small">Open question Q1: Playwright headless vs an undocumented RSS feed vs emailing
+  the publisher for a daily JSON.</p></div>
+
+  <div class="card"><h4>Canonical citation <span class="pill synth">spike</span></h4>
+  <pre><code>http://www.boa.aragon.es/eli/es-ar/
+   {type}/{YYYY}/{MM}/{DD}/{num}/dof</code></pre>
+  <p class="small">ELI URI — stable, use as <code>source_document.url</code>. Types: <code>d</code>
+  decreto, <code>o</code> orden, <code>dl</code> decreto-ley, <code>r</code> resolución. Resolves to
+  the SPA, <b>not</b> a fetchable doc.</p></div>
+
+  <div class="card"><h4>Posture <span class="pill synth">spike</span></h4>
+  <ul class="small" style="margin:0;padding-left:18px">
+    <li><b>robots.txt</b> lists ~600 specific blocked VEROBJ ids ("derecho al olvido"); honour it
+    via <code>RobotsGuard</code>. Current-day docs aren't on it.</li>
+    <li><b>Rate limit:</b> 2.0 s floor (legacy CGI). ~5–30 PDFs/day → ~1 min/day.</li>
+    <li><b>User-Agent:</b> needs a Mozilla-style UA or the endpoint resets the connection.</li>
+    <li><b>Charset:</b> BRSCGI HTML is ISO-8859-1; decode as Latin-1. PDF text is UTF-8.</li>
+    <li><b>Licence:</b> CC BY 4.0 — commercial reuse OK with attribution.</li>
+  </ul></div>
+</div>
+
+<!-- ───────────────────────────── 9 ───────────────────────────── -->
+<h2 id="links">9 · Sample links to probe</h2>
+<p>A starting kit for hands-on exploration. <span class="pill real">live-verified</span> links
+resolved during research this week; treat document ids as examples (some VEROBJ ids may age out).</p>
+<table>
+<tr><th>What</th><th>Link</th><th>Tag</th></tr>
+<tr><td>BOA portal (SPA home)</td><td><a class="link" href="https://www.boa.aragon.es/">boa.aragon.es</a></td><td><span class="pill real">live</span></td></tr>
+<tr><td>Aragón "Proyectos en información pública" (the regional dossier catalogue)</td><td><a class="link" href="https://www.aragon.es/-/proyectos-en-informacion-publica">aragon.es/-/proyectos-en-informacion-publica</a></td><td><span class="pill real">live</span></td></tr>
+<tr><td>Example full-document view (VERDOC)</td><td><a class="link" href="https://www.boa.aragon.es/cgi-bin/EBOA/BRSCGI?CMD=VERDOC&BASE=BOLE&SEC=BUSQUEDA_AVANZADA&DOCN=007934900">BRSCGI…VERDOC…DOCN=007934900</a></td><td><span class="pill real">live</span></td></tr>
+<tr><td>Example object fetch (VEROBJ → PDF)</td><td><a class="link" href="https://www.boa.aragon.es/cgi-bin/EBOA/BRSCGI?CMD=VEROBJ&MLKOB=1413306801515">BRSCGI…VEROBJ…MLKOB=1413306801515</a></td><td><span class="pill real">live</span></td></tr>
+<tr><td>Real INAGA DIA example — "Entreviso" hybrid PV+wind, BOA nº 189, 27 Sep 2024</td><td><a class="link" href="https://www.aragon.es/-/parque-eolico-ignis-generacion-solar-plan-de-vigilancia-ambiental">aragon.es project page (Ignis, related)</a></td><td><span class="pill real">live</span></td></tr>
+<tr><td>MITECO national tramitación overview (the &gt;50 MW path)</td><td><a class="link" href="https://www.miteco.gob.es/es/energia/energia-electrica/electricidad/tramitacion-instalaciones.html">miteco.gob.es · tramitación-instalaciones</a></td><td><span class="pill real">live</span></td></tr>
+<tr><td>MITECO dossier warehouse pattern</td><td><code>https://almacen.redsara.es/sending/public/{uuid}</code></td><td><span class="pill synth">pattern</span></td></tr>
+<tr><td>RDL 23/2020 (the milestones / caducidad statute)</td><td><a class="link" href="https://www.boe.es/buscar/act.php?id=BOE-A-2020-6621">BOE-A-2020-6621</a></td><td><span class="pill real">live</span></td></tr>
+</table>
+
+<!-- ───────────────────────────── 10 ───────────────────────────── -->
+<h2 id="schema">10 · How a BOA document maps to our schema</h2>
+<pre><code>BOA daily PDF bulletin
+  └─ split per administrative act ─┐
+                                   ▼
+  source_document                  (one row per act)
+    source_id      = 'boa'
+    external_id    = CSV code  BOA{YYYYMMDD}{NN}
+    url            = ELI URI
+    published_at   = parsed from PDF 'subject'
+    body           = PyMuPDF text
+    metadata       = {section, departamento, mlkob, gazette_number, gazette_type, eli_uri}
+        │
+        ▼ extractor (boa-v1 prompt — PDF-aware, NOT BOE-v4)
+  permit_event                     (the dated regulatory act)
+    event_type     ∈ {PC_OPENED, RESOLUTION_GRANTED, DIA_PUBLISHED, ANUNCIO_PROVIDED}
+    event_outcome  ∈ {pendiente, aprobada, denegada, desistida}   ← DIA fav/desf lives here
+    project_id     → resolved later by project_linker (name + applicant + cadastral)
+    developer_id   → resolved later by developer_linker (CIF + name)
+        ├─ permit_milestone   (hitos 1–5 from RDL 23/2020, with due_date)
+        ├─ substation_mention (one per cited node+kV → substation master, REE-canonical names)
+        └─ project_documentation (if anuncio embeds a MITECO/Aragón dossier pointer)
+</code></pre>
+<p class="small muted">No BOA-specific schema change is needed — BOA's event taxonomy is a subset of
+BOE's. The only BOA-specific engineering is the PDF→text path and a dedicated <code>boa-v1</code>
+extractor prompt (BOE-v4 is an XML/text-parser and won't transfer to flattened multi-column PDF
+text without a de-hyphenate / page-glue preprocessing step).</p>
+
+<!-- ───────────────────────────── 11 ───────────────────────────── -->
+<h2 id="caveats">11 · Caveats &amp; open questions</h2>
+<div class="call warn"><b>What is solidly confirmed vs still inferred</b>
+<ul style="margin:6px 0 0">
+<li><span class="pill synth">spike</span> The Sprint 0 spike fetched <b>one</b> real BOA PDF (a 2021
+health-alert order, not renewable). The three renewable worked examples in the spike are
+<b>synthesised templates</b> against the structural pattern — expect real field sets to drift
+slightly once T1.1's first extraction batch runs.</li>
+<li><span class="pill infer">domain</span> The lifecycle, competence split, and "status is
+single-expediente" answers are grounded in primary regulatory texts (RDL 23/2020) and MITECO/EU
+permitting docs, but have <b>not</b> yet been cross-checked field-by-field against a live BOA
+renewable resolution. High confidence, not verified end-to-end.</li>
+</ul></div>
+
+<table>
+<tr><th>Open question</th><th>Status</th></tr>
+<tr><td><b>Q1 · Daily discovery mechanism</b> — Playwright SPA scrape vs undocumented RSS vs publisher email for a JSON feed. Load-bearing for loader reliability.</td><td>Unresolved (spike Q1/Q4)</td></tr>
+<tr><td><b>Q2 · Extractor</b> — confirm a dedicated <code>boa-v1</code> prompt; BOE-v4 won't transfer to PDF text.</td><td>Recommended, +1.5 d (spike Q2)</td></tr>
+<tr><td><b>Access-date estimation</b> — when cancelled capacity re-emerges, BOA may not publish the new access date; it must be estimated from REE/Endesa signals.</td><td>Tuesday working session (scope memo)</td></tr>
+<tr><td><b>DIA outcome field placement</b> — confirm <code>event_outcome</code> on <code>permit_event</code> vs inside milestones.</td><td>Data-model open Q</td></tr>
+</table>
+
+<div class="call q"><b>Suggested next probe to close the inference gap</b>
+Pull one real, recent BOA renewable resolution end-to-end — e.g. an INAGA DIA from the "Entreviso"
+or "Rané" hybrid projects (BOA 2024–2025) — run it through PyMuPDF + the draft <code>boa-v1</code>
+prompt, and confirm every field in §4/§10 maps as described. That single real extraction converts
+most <span class="pill infer">domain</span> tags above into <span class="pill real">live-verified</span>.</div>
+
+</main>
+</div>
+
+<footer>
+  <p><strong>BOA dataset deep dive</strong> · Phase 1 · compiled 2026-05-27. Grounds
+  <code>docs/spikes/sprint-0/boa-shape.md</code> and
+  <code>docs/requirements/miteco-project-documentation-synthesis.md</code> with the regulatory
+  process behind the data. Sources: RDL 23/2020 (BOE-A-2020-6621); MITECO tramitación-instalaciones;
+  EU Clean-Energy-Islands Spain permitting; boa.aragon.es; aragon.es información-pública.</p>
+</footer>
+<script>
+  (() => {
+    const links = document.querySelectorAll('nav a[href^="#"]');
+    if (!links.length) return;
+    const map = new Map();
+    links.forEach(a => {
+      const id = a.getAttribute('href').slice(1);
+      const t = document.getElementById(id);
+      if (t) map.set(t, a);
+    });
+    const setActive = (a) => {
+      links.forEach(l => l.classList.remove('active'));
+      a.classList.add('active');
+    };
+    const obs = new IntersectionObserver((entries) => {
+      const visible = entries.filter(e => e.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      if (visible[0]) {
+        const a = map.get(visible[0].target);
+        if (a) setActive(a);
+      }
+    }, { rootMargin: '-25% 0px -65% 0px', threshold: 0 });
+    map.forEach((_, t) => obs.observe(t));
+  })();
+</script>
+</body>
+</html>
