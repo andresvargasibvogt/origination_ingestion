@@ -1,7 +1,7 @@
 [project]
-name = "boe-ingest"
-version = "0.1.0"
-description = "Daily BOE scraper landing raw PDFs in lh_esp_origination (Fabric OneLake)"
+name = "origination-ingest"
+version = "0.2.0"
+description = "Daily ingestion of Spanish gazettes (BOE, BOA, ...) into Microsoft Fabric OneLake"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -27,6 +27,7 @@ dev = [
 
 [project.scripts]
 boe-ingest = "boe_ingest.__main__:main"
+boa-ingest = "boa_ingest.__main__:main"
 boe-promoter = "boe_ingest.promoter:main"
 
 [build-system]
@@ -34,7 +35,7 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/boe_ingest"]
+packages = ["src/boe_ingest", "src/boa_ingest"]
 
 [dependency-groups]
 dev = [

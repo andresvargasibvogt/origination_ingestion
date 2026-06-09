@@ -30,7 +30,8 @@ Both loaders run as Azure Container Apps Jobs in Spain Central, write to OneLake
 
 | Doc | Title | Status |
 |-----|-------|--------|
-| [Week 1 recap](docs/operational/week-1-recap.md) | What we shipped in week 1 (2026-06-01 → 2026-06-05): architecture, resources, cron jobs, destinations, usage runbook, week 2 next steps | Current |
+| [Week 1 recap](docs/operational/week-1-recap.md) | What we shipped in week 1 (2026-06-01 → 2026-06-05): architecture, resources, cron jobs, destinations, usage runbook, week 2 next steps | Historical |
+| [Week 2 recap](docs/operational/week-2-recap.md) | BOA ingest live + unified container image (2026-06-08): manifest/promoter refactor, boa_ingest package, BOA discovery story (Option B succeeded — no browser needed) | Current |
 | [Option C upgrade plan](docs/operational/network-upgrade-plan-option-c.md) | Pre-positioned plan for migrating Option A → Option C (VNet + private endpoints + workspace private link) | Not executed; ready to run when a trigger fires (Endesa creds, audit, policy change, incident) |
 
 ## Source deep-dives

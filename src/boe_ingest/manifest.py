@@ -18,8 +18,32 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 SCHEMA_VERSION: Literal["1.0"] = "1.0"
-SOURCE: Literal["boe"] = "boe"
-ATTRIBUTION: str = "Fuente de los datos: Agencia Estatal Boletín Oficial del Estado"
+
+# Source identifiers used in both the manifest payload and the OneLake bronze
+# path (bronze/{source}/raw/...). Widen this literal when a new source comes
+# online; the promoter discovers the source from each blob's path at runtime.
+Source = Literal["boe", "boa"]
+SOURCE_BOE: Source = "boe"
+SOURCE_BOA: Source = "boa"
+
+# Backward-compat alias. Prefer `SOURCE_BOE` / `SOURCE_BOA` in new code.
+SOURCE: Source = SOURCE_BOE
+
+# Per-source attribution strings (PSI / CC BY 4.0 obligation).
+ATTRIBUTION_BOE: str = "Fuente de los datos: Agencia Estatal Boletín Oficial del Estado"
+ATTRIBUTION_BOA: str = "Fuente de los datos: Gobierno de Aragón — Boletín Oficial de Aragón"
+
+# Backward-compat alias for BOE callers.
+ATTRIBUTION: str = ATTRIBUTION_BOE
+
+
+def attribution_for(source: Source) -> str:
+    """Return the attribution string for a given source."""
+    if source == SOURCE_BOE:
+        return ATTRIBUTION_BOE
+    if source == SOURCE_BOA:
+        return ATTRIBUTION_BOA
+    raise ValueError(f"Unknown source: {source!r}")
 
 
 class _Frozen(BaseModel):
@@ -31,10 +55,14 @@ class _Frozen(BaseModel):
 class ItemEntry(_Frozen):
     """One row in the manifest's `items` list — represents one landed PDF."""
 
-    identifier: str = Field(description="BOE-A-YYYY-N disposition identifier")
-    section: str = Field(description="BOE section codigo (e.g. 'III', 'V')")
-    departamento_codigo: str = Field(description="Departamento codigo (e.g. '9575' for MITECO)")
-    departamento: str = Field(description="Departamento full name as the sumario reports it")
+    identifier: str = Field(description="Disposition identifier (BOE-A-YYYY-N for BOE; MLKOB for BOA)")
+    section: str = Field(description="Section código (e.g. 'III', 'V')")
+    subsection: str | None = Field(
+        default=None,
+        description="Subsection inside a section (BOA only — 'a', 'b', 'c'). None for BOE.",
+    )
+    departamento_codigo: str = Field(description="Departamento código (BOE) or empty (BOA, departamento name is canonical)")
+    departamento: str = Field(description="Departamento full name as the source reports it")
     published_at: str = Field(description="ISO date (YYYY-MM-DD)")
     url_pdf: str | None = None
     url_xml: str | None = None
@@ -63,7 +91,7 @@ class RunInfo(BaseModel):
     items_written: int = Field(ge=0)
     items_failed: list[FailedItem] = Field(default_factory=list)
     items_robots_blocked: int = Field(default=0, ge=0)
-    attribution: str = ATTRIBUTION
+    attribution: str = ATTRIBUTION_BOE
 
 
 class Manifest(BaseModel):
@@ -72,7 +100,7 @@ class Manifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal["1.0"] = SCHEMA_VERSION
-    source: Literal["boe"] = SOURCE
+    source: Source = SOURCE_BOE
     run: RunInfo
     items: list[ItemEntry]
 

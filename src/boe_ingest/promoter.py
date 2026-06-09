@@ -34,13 +34,26 @@ from typing import Any
 import structlog
 from azure.core.exceptions import ResourceNotFoundError
 from azure.storage.blob import BlobClient, BlobServiceClient
+from pydantic import TypeAdapter, ValidationError
 
 from .config import load_settings
-from .manifest import ATTRIBUTION, SCHEMA_VERSION, SOURCE, FailedItem, ItemEntry, Manifest, RunInfo, now_iso
+from .manifest import (
+    FailedItem,
+    ItemEntry,
+    Manifest,
+    RunInfo,
+    Source,
+    attribution_for,
+    now_iso,
+)
 from .onelake import OneLakeWriter, select_credential
 from .paths import manifest_path
 
 log = structlog.get_logger()
+
+# Single source of truth for "is this a known Source literal value?"
+# Updates automatically when the Source Literal in manifest.py is widened.
+_SOURCE_ADAPTER: TypeAdapter[Source] = TypeAdapter(Source)
 
 # Tag key used by Defender for Storage. Microsoft writes the key as
 # `Malware Scanning scan result` (singular) — confirmed against
@@ -134,8 +147,14 @@ def _upsert_manifest(
     target_date_iso: str,
     new_items: list[ItemEntry],
     failed: list[FailedItem],
+    source: Source,
 ) -> Manifest:
-    """Merge `new_items` into the existing manifest by identifier (last write wins)."""
+    """Merge `new_items` into the existing manifest by identifier (last write wins).
+
+    `source` is the source identifier discovered from the blob path
+    (`bronze/{source}/raw/...`), so a single promoter run handles BOE + BOA
+    + any future source from a single image.
+    """
     if existing is None:
         run = RunInfo(
             started_at=now_iso(),
@@ -145,11 +164,10 @@ def _upsert_manifest(
             items_filtered_in=len(new_items),
             items_written=len(new_items),
             items_failed=failed,
-            attribution=ATTRIBUTION,
+            attribution=attribution_for(source),
         )
         return Manifest(
-            schema_version=SCHEMA_VERSION,
-            source=SOURCE,
+            source=source,
             run=run,
             items=list(new_items),
         )
@@ -202,7 +220,10 @@ def main() -> int:
         container=settings.stg_container_untrusted,
     )
 
-    promoted_by_day: dict[str, list[ItemEntry]] = defaultdict(list)
+    # Keyed by (source, date_iso). One promoter run handles BOE + BOA + any
+    # future source by routing each blob to the right manifest based on the
+    # source segment of its bronze/{source}/raw/... path.
+    promoted_by_key: dict[tuple[Source, str], list[ItemEntry]] = defaultdict(list)
     quarantined: int = 0
     pending: int = 0
     skipped: int = 0
@@ -216,7 +237,13 @@ def main() -> int:
             log.warning("path_unparseable", path=path)
             skipped += 1
             continue
-        _source, year, month, day, filename = parts
+        source_raw, year, month, day, filename = parts
+        try:
+            source: Source = _SOURCE_ADAPTER.validate_python(source_raw)
+        except ValidationError:
+            log.warning("unknown_source", path=path, source=source_raw)
+            skipped += 1
+            continue
         date_iso = f"{year}-{month}-{day}"
 
         # Sumario JSON: copy as-is, no verdict check needed (it's JSON, not user content)
@@ -256,20 +283,21 @@ def main() -> int:
         onelake.write_bytes(path, data)
         entry = _blob_metadata_to_item_entry(metadata, path)
         if entry is not None:
-            promoted_by_day[date_iso].append(entry)
+            promoted_by_key[(source, date_iso)].append(entry)
         blob_client.delete_blob()
         log.info("blob_promoted", path=path, bytes=len(data))
 
-    # Upsert manifests for any dates we touched
-    for date_iso, new_items in promoted_by_day.items():
+    # Upsert manifests for any (source, date) we touched
+    for (source, date_iso), new_items in promoted_by_key.items():
         year, month, day = date_iso.split("-")
         from datetime import date as _date  # local import to keep module top tidy
-        manifest_rel_path = manifest_path(_date(int(year), int(month), int(day)))
+        manifest_rel_path = manifest_path(_date(int(year), int(month), int(day)), source=source)
         existing = _load_existing_manifest(onelake, manifest_rel_path)
-        merged = _upsert_manifest(existing, date_iso, new_items, failed=[])
+        merged = _upsert_manifest(existing, date_iso, new_items, failed=[], source=source)
         onelake.write_text(manifest_rel_path, merged.to_json())
         log.info(
             "manifest_upserted",
+            source=source,
             date=date_iso,
             items_added=len(new_items),
             items_total=len(merged.items),
@@ -278,7 +306,7 @@ def main() -> int:
     log.info(
         "promoter_run_done",
         sumarios_copied=sumarios_copied,
-        promoted=sum(len(v) for v in promoted_by_day.values()),
+        promoted=sum(len(v) for v in promoted_by_key.values()),
         quarantined=quarantined,
         pending=pending,
         skipped=skipped,
