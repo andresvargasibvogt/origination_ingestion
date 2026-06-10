@@ -20,8 +20,8 @@ from zoneinfo import ZoneInfo
 
 import structlog
 
-from boe_ingest.blob import BlobWriter
-from boe_ingest.onelake import LocalWriter, OneLakeWriter, Writer
+from origination_common.blob import BlobWriter
+from origination_common.onelake import LocalWriter, OneLakeWriter, Writer
 
 from .config import Settings, load_settings
 from .orchestrator import ingest_one_day

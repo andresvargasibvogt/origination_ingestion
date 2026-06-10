@@ -12,12 +12,10 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Stable constants (not env-driven).
-SOURCE: str = "boe"
-BRONZE_ROOT: str = f"bronze/{SOURCE}/raw"
+# Stable constants (not env-driven). BOE-source-specific only — shared infra
+# constants (ONELAKE_ACCOUNT_URL) live in origination_common.config.
 BOE_BASE_URL: str = "https://www.boe.es"
 SUMARIO_API_PATH: str = "/datosabiertos/api/boe/sumario/{date}"
-ONELAKE_ACCOUNT_URL: str = "https://onelake.dfs.fabric.microsoft.com"
 
 _DEFAULT_RELEVANCE_PATH = Path(__file__).parent / "relevance.yaml"
 

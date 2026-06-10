@@ -36,7 +36,7 @@ from azure.core.exceptions import ResourceNotFoundError
 from azure.storage.blob import BlobClient, BlobServiceClient
 from pydantic import TypeAdapter, ValidationError
 
-from .config import load_settings
+from .config import load_common_settings
 from .manifest import (
     FailedItem,
     ItemEntry,
@@ -108,8 +108,9 @@ def _blob_metadata_to_item_entry(
     try:
         return ItemEntry(
             identifier=metadata["identifier"],
-            section=metadata["section"],
-            departamento_codigo=metadata["departamento_codigo"],
+            section=metadata.get("section", ""),
+            subsection=metadata.get("subsection"),
+            departamento_codigo=metadata.get("departamento_codigo", ""),
             departamento=metadata.get("departamento", ""),
             published_at=metadata["published_at"],
             url_pdf=metadata.get("url_pdf"),
@@ -192,7 +193,7 @@ def _upsert_manifest(
 
 def main() -> int:
     _configure_logging()
-    settings = load_settings()
+    settings = load_common_settings()
 
     if not settings.stg_account_name:
         log.error("STG_ACCOUNT_NAME not set — promoter cannot run")

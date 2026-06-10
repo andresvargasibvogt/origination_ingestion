@@ -22,28 +22,35 @@ SCHEMA_VERSION: Literal["1.0"] = "1.0"
 # Source identifiers used in both the manifest payload and the OneLake bronze
 # path (bronze/{source}/raw/...). Widen this literal when a new source comes
 # online; the promoter discovers the source from each blob's path at runtime.
-Source = Literal["boe", "boa"]
+Source = Literal["boe", "boa", "ree"]
 SOURCE_BOE: Source = "boe"
 SOURCE_BOA: Source = "boa"
+SOURCE_REE: Source = "ree"
 
-# Backward-compat alias. Prefer `SOURCE_BOE` / `SOURCE_BOA` in new code.
+# Backward-compat alias. Prefer the explicit SOURCE_* constants in new code.
 SOURCE: Source = SOURCE_BOE
 
 # Per-source attribution strings (PSI / CC BY 4.0 obligation).
 ATTRIBUTION_BOE: str = "Fuente de los datos: Agencia Estatal Boletín Oficial del Estado"
 ATTRIBUTION_BOA: str = "Fuente de los datos: Gobierno de Aragón — Boletín Oficial de Aragón"
+ATTRIBUTION_REE: str = "Fuente de los datos: Red Eléctrica de España (REE)"
 
 # Backward-compat alias for BOE callers.
 ATTRIBUTION: str = ATTRIBUTION_BOE
 
+_ATTRIBUTION_BY_SOURCE: dict[str, str] = {
+    SOURCE_BOE: ATTRIBUTION_BOE,
+    SOURCE_BOA: ATTRIBUTION_BOA,
+    SOURCE_REE: ATTRIBUTION_REE,
+}
+
 
 def attribution_for(source: Source) -> str:
     """Return the attribution string for a given source."""
-    if source == SOURCE_BOE:
-        return ATTRIBUTION_BOE
-    if source == SOURCE_BOA:
-        return ATTRIBUTION_BOA
-    raise ValueError(f"Unknown source: {source!r}")
+    try:
+        return _ATTRIBUTION_BY_SOURCE[source]
+    except KeyError:
+        raise ValueError(f"Unknown source: {source!r}") from None
 
 
 class _Frozen(BaseModel):

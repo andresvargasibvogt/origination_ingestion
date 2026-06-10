@@ -13,10 +13,9 @@ from typing import Any
 import httpx
 import structlog
 
-from . import paths
-from .config import BOE_BASE_URL, Settings
-from .fetcher import PDFFetchError, PDFFetcher
-from .manifest import (
+from origination_common import paths
+from origination_common.fetcher import PDFFetchError, PDFFetcher
+from origination_common.manifest import (
     FailedItem,
     ItemEntry,
     Manifest,
@@ -24,9 +23,11 @@ from .manifest import (
     now_iso,
     sha256_hex,
 )
-from .onelake import Writer
+from origination_common.onelake import Writer
+from origination_common.robots import RobotsGuard
+
+from .config import BOE_BASE_URL, Settings
 from .relevance import RelevanceConfig, passes_filter
-from .robots import RobotsGuard
 from .sumario import EmptyDay, fetch_sumario, total_items, walk_items
 
 log = structlog.get_logger()

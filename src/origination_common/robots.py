@@ -1,13 +1,13 @@
-"""robots.txt guard for boe.es.
+"""robots.txt guard — source-agnostic.
 
-Honors the disallow rules — `verifica.*`, `/boe_n/`, `/notificaciones/`,
-`/boe_j/`, `/edictos_judiciales/`, plus the ~hundreds of individual
-'derecho al olvido' blocked document IDs (deep-dive §8).
+Any URL a source is about to fetch is checked against the publisher's
+robots.txt first. Blocked URLs are silently skipped (logged as
+`robots_blocked`) and counted in the manifest — they're not failures.
 
-The relevance filter already excludes those sections at the corpus level,
-but this guard is belt-and-suspenders: any URL we're about to fetch is
-checked against robots first. Blocked URLs are silently skipped (logged
-as `robots_blocked`) and counted in the manifest — they're not failures.
+Each source constructs its own guard with that source's base_url
+(boe.es, boa.aragon.es, ree.es, ...). The relevance filter already
+excludes disallowed sections at the corpus level for the gazettes; this
+guard is belt-and-suspenders on top.
 """
 
 from __future__ import annotations
@@ -18,11 +18,9 @@ from urllib.robotparser import RobotFileParser
 import httpx
 import structlog
 
-from .config import BOE_BASE_URL
-
 log = structlog.get_logger()
 
-_DEFAULT_USER_AGENT = "boe-ingest/1.0"
+_DEFAULT_USER_AGENT = "origination-ingest/1.0"
 
 
 class RobotsGuard:
@@ -35,7 +33,7 @@ class RobotsGuard:
 
     def __init__(
         self,
-        base_url: str = BOE_BASE_URL,
+        base_url: str,
         user_agent: str = _DEFAULT_USER_AGENT,
     ) -> None:
         self._base_url = base_url.rstrip("/")
