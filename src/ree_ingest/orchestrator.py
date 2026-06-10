@@ -73,7 +73,11 @@ async def ingest_latest(
         html = await fetch_landing_page(client)
         latest = find_latest_csv(html)
 
-        target_rel_path = f"{partition_dir(latest.published_at, source=SOURCE_REE)}/{latest.filename}"
+        # REE is monthly → month-level partition (no day= folder).
+        target_rel_path = (
+            f"{partition_dir(latest.published_at, source=SOURCE_REE, granularity='month')}"
+            f"/{latest.filename}"
+        )
         identifier = latest.filename.removesuffix(".csv")
         full_url = f"{REE_BASE_URL}{latest.url_path}"
 
@@ -149,7 +153,7 @@ async def ingest_latest(
     manifest = Manifest(source=SOURCE_REE, run=run, items=items_written)
     if emit_manifest:
         writer.write_text(
-            manifest_path(latest.published_at, source=SOURCE_REE),
+            manifest_path(latest.published_at, source=SOURCE_REE, granularity="month"),
             manifest.to_json(),
         )
     log.info(
