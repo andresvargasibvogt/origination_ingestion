@@ -12,12 +12,13 @@ Builds on [week 1](./week-1-recap.md) (BOE) and [week 2](./week-2-recap.md) (BOA
 
 A **third source (REE)** is live, and the codebase was refactored so no source
 package imports another. REE is a different shape from the gazettes: a single
-CSV published **monthly on an uncertain day**, fetched by a **daily poller** that
-no-ops until a new version appears.
+CSV published **monthly on an uncertain day**, fetched by a **weekly poller** that
+no-ops until a new version appears (dedup guarantees exactly one collection per
+month regardless of poll frequency).
 
 Verified end-to-end in cloud on 2026-06-10:
 
-- `caj-ree-daily` discovered + downloaded `2026_06_04_GRT_generacion.csv` (300 KB) → staging
+- `caj-ree-monthly` discovered + downloaded `2026_06_04_GRT_generacion.csv` (300 KB) → staging
 - Defender scanned it → `caj-promoter` promoted it to OneLake `bronze/ree/raw/year=2026/month=06/day=04/` + wrote the manifest
 - Re-trigger logged `ree_version_already_present` (dedup no-op) — no re-download, no re-scan
 - BOE + BOA re-verified on the same refactored image: 4 BOE + 1 BOA items still land correctly
@@ -92,15 +93,19 @@ land raw bytes; no parsing at bronze.
 
 ### Poll + dedup
 
-`caj-ree-daily` runs **weekdays at 09:00 UTC** (`0 9 * * 1-5`). Each run:
+`caj-ree-monthly` runs **weekly, Mondays at 09:00 UTC** (`0 9 * * 1`). Each run:
 1. fetches the landing page, finds the latest CSV + its publication date
 2. checks if `bronze/ree/raw/year=/month=/day=/{file}.csv` already exists in OneLake
 3. if present → logs `ree_version_already_present`, exits (no download, no scan)
 4. if new → downloads → writes to staging → promoter promotes after Defender clears it
 
-So the poller is a clean no-op on the ~21 weekdays/month with no new release, and
-lands the file within one business day of publication regardless of which day REE
-picks. `--force` bypasses the dedup; `--out-dir` runs locally without Azure.
+REE publishes ~once a month on an uncertain day. The **dedup is what makes this
+"collect the monthly file once"** — not the cron frequency. We poll weekly (≈4
+runs/month, robust to the uncertain release day; the file is caught within ~7
+days of publication and then every later poll that month is a no-op). A strict
+once-a-month cron on a fixed day was rejected: it would miss the file entirely
+if REE published on a different day. `--force` bypasses the dedup; `--out-dir`
+runs locally without Azure.
 
 ---
 
@@ -110,7 +115,7 @@ picks. `--force` bypasses the dedup; `--out-dir` runs locally without Azure.
 |---|---|---|---|
 | `caj-boe-daily` | `0 7 * * 1-6` | `boe-ingest --date=today` | daily Mon–Sat |
 | `caj-boa-daily` | `0 8 * * 1-6` | `boa-ingest --date=today` | daily Mon–Sat |
-| `caj-ree-daily` | `0 9 * * 1-5` | `ree-ingest` | daily poll, monthly artifact |
+| `caj-ree-monthly` | `0 9 * * 1` | `ree-ingest` | weekly poll, one collection/month |
 | `caj-promoter` | `15,45 7,8,9 * * 1-6` | `promoter` | 6 runs/day, drains all sources |
 | `caj-boe-backfill` | manual | `boe-ingest --from=… --to=…` | on demand |
 
@@ -150,4 +155,4 @@ No new container, no new image, no promoter code change.
 
 - **Done:** legacy `boe-ingest` ACR repo deleted (week 2); `containers/boe.Dockerfile` removed (superseded by `origination-ingest.Dockerfile`); promoter switched to canonical `promoter` command.
 - **Outstanding (low priority):** drop the redundant `Storage Blob Data Contributor` RBAC on the staging account (Owner is a superset).
-- **Watch (next ~3 weeks):** confirm July's REE release is auto-detected. Expected first week of July; `caj-ree-daily` should land it within a business day and log the new `published_at`.
+- **Watch (next ~3 weeks):** confirm July's REE release is auto-detected. Expected first week of July; the Monday `caj-ree-monthly` poll should land it within ~7 days of publication and log the new `published_at`.
