@@ -1,11 +1,12 @@
-# BOE + BOA → OneLake
+# Origination ingestion → OneLake
 
-Daily ingestion of the renewable-energy slice of two Spanish official gazettes into Microsoft Fabric OneLake:
+Daily ingestion of the renewable-energy slice of Spanish public sources into Microsoft Fabric OneLake:
 
 - **BOE** (Boletín Oficial del Estado) — state-competence projects (>50 MW peninsular, multi-CCAA, offshore).
 - **BOA** (Boletín Oficial de Aragón) — Aragón regional-competence projects (≤50 MW within the CCAA).
+- **REE** (Red Eléctrica de España) — monthly transport-grid access-capacity CSV ("Capacidad de acceso de generación … en los nudos de la red de transporte").
 
-Both loaders run as Azure Container Apps Jobs in Spain Central, write to OneLake via managed identity, and feed downstream extraction / linking tools that live outside this repo.
+All loaders run as Azure Container Apps Jobs in North Europe on a single shared image (`origination-ingest`), write to OneLake via managed identity through a Defender-scanned staging account, and feed downstream extraction / linking tools that live outside this repo. Source-agnostic infrastructure lives in `src/origination_common/`; each source package (`boe_ingest`, `boa_ingest`, `ree_ingest`) owns only its discovery + filter + orchestration.
 
 ## Status
 
@@ -31,7 +32,8 @@ Both loaders run as Azure Container Apps Jobs in Spain Central, write to OneLake
 | Doc | Title | Status |
 |-----|-------|--------|
 | [Week 1 recap](docs/operational/week-1-recap.md) | What we shipped in week 1 (2026-06-01 → 2026-06-05): architecture, resources, cron jobs, destinations, usage runbook, week 2 next steps | Historical |
-| [Week 2 recap](docs/operational/week-2-recap.md) | BOA ingest live + unified container image (2026-06-08): manifest/promoter refactor, boa_ingest package, BOA discovery story (Option B succeeded — no browser needed) | Current |
+| [Week 2 recap](docs/operational/week-2-recap.md) | BOA ingest live + unified container image (2026-06-08): manifest/promoter refactor, boa_ingest package, BOA discovery story (Option B succeeded — no browser needed) | Historical |
+| [Week 3 recap](docs/operational/week-3-recap.md) | REE monthly capacity-CSV poller + `origination_common` shared-package extraction (2026-06-10): poll-for-new-version pattern, OneLake-dedup, all three sources on one image | Current |
 | [Option C upgrade plan](docs/operational/network-upgrade-plan-option-c.md) | Pre-positioned plan for migrating Option A → Option C (VNet + private endpoints + workspace private link) | Not executed; ready to run when a trigger fires (Endesa creds, audit, policy change, incident) |
 
 ## Source deep-dives

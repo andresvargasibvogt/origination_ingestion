@@ -54,7 +54,7 @@ CONTRIBUTOR_GROUP_OBJECT_ID="${CONTRIBUTOR_GROUP_OBJECT_ID:-a478fcaa-0a99-4c05-a
 # Image config — single image, two entry points (ingest + promoter)
 IMAGE_NAME="boe-ingest"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
-DOCKERFILE="containers/boe.Dockerfile"
+DOCKERFILE="containers/origination-ingest.Dockerfile"
 
 # ─── Helpers ─────────────────────────────────────────────────────────────
 log()  { printf '\033[1;34m[%s]\033[0m %s\n' "$(date -u +%H:%M:%S)" "$*"; }
