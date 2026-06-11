@@ -8,6 +8,8 @@ Daily ingestion of the renewable-energy slice of Spanish public sources into Mic
 
 All loaders run as Azure Container Apps Jobs in North Europe on a single shared image (`origination-ingest`), write to OneLake via managed identity through a Defender-scanned staging account, and feed downstream extraction / linking tools that live outside this repo. Source-agnostic infrastructure lives in `src/origination_common/`; each source package (`boe_ingest`, `boa_ingest`, `ree_ingest`) owns only its discovery + filter + orchestration.
 
+**New here?** Start with [how the pipeline works](docs/architecture/how-the-pipeline-works.md) — a detailed walkthrough of the scrapers and the promoter job.
+
 ## Status
 
 - Architecture plan: approved (see `~/.claude/plans/i-need-to-scrape-lively-boole.md` for the working plan).
