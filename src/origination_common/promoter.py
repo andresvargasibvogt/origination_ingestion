@@ -1,18 +1,23 @@
 """Promoter — moves clean blobs from staging to OneLake (ADR-008 Pattern F).
 
-Runs every 5 minutes as a separate ACA Job (`caj-promoter`).
+Source-agnostic. Runs as a scheduled ACA Job (`caj-promoter`, cron
+`15,45 7,8,9 * * 1-6`) shared by every source. Each run scans the whole
+staging `untrusted/` container and promotes what is ready, regardless of which
+source wrote it — the source is read back from each blob's
+`bronze/{source}/raw/...` path.
 
 For each blob in the staging container `untrusted/`:
 
-  1. Read its blob index tag `Malware Scanning scan results`
-     - "No threats found" → copy bytes to OneLake at the same path,
-       upsert the day's manifest in OneLake, then delete the staging blob.
-     - "Malicious"        → move blob to `quarantine/`, emit a security
-       log event. Do not promote.
-     - Missing/pending    → skip; will retry next run.
+  1. Read its blob index tag `Malware Scanning scan result` (written by
+     Defender for Storage on-upload scanning):
+     - "No threats found" → copy bytes to OneLake at the same path, record
+       the item for the partition's manifest, then delete the staging blob.
+     - "Malicious"        → copy blob to `quarantine/`, delete from
+       `untrusted/`, emit a security log event. Do not promote.
+     - Missing/pending    → skip; will retry next run (Defender hasn't
+       finished scanning yet).
 
-  2. Sumario JSON (no scan needed but treated the same way) — copied to
-     OneLake when seen.
+After the blob pass, one manifest is upserted per touched partition folder.
 
 The promoter is idempotent and crash-safe:
   - "Copy then delete" semantics: if the promoter dies between copy and
@@ -95,11 +100,12 @@ def _read_scan_verdict(blob_client: BlobClient) -> str | None:
     return tags.get(SCAN_RESULT_TAG)
 
 
-def _parse_date_path(path: str) -> tuple[str, str, str, str, str] | None:
-    """Split a `bronze/{source}/raw/year=.../day=.../filename` path into parts.
+def _parse_date_path(path: str) -> tuple[str, str, str, str | None, str] | None:
+    """Split a `bronze/{source}/raw/year=.../[day=.../]filename` path into parts.
 
-    Returns (source, year, month, day, filename) or None if the path
-    doesn't match the expected layout.
+    Returns (source, year, month, day, filename) or None if the path doesn't
+    match the expected layout. `day` is None for monthly sources (REE) whose
+    paths have no `day=` segment.
     """
     m = _DATE_PATH_RE.match(path)
     if not m:

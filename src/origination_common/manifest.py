@@ -60,16 +60,16 @@ class _Frozen(BaseModel):
 
 
 class ItemEntry(_Frozen):
-    """One row in the manifest's `items` list — represents one landed PDF."""
+    """One row in the manifest's `items` list — represents one landed file."""
 
-    identifier: str = Field(description="Disposition identifier (BOE-A-YYYY-N for BOE; MLKOB for BOA)")
-    section: str = Field(description="Section código (e.g. 'III', 'V')")
+    identifier: str = Field(description="Item id: BOE-A-YYYY-N (BOE), MLKOB (BOA), or filename stem (REE)")
+    section: str = Field(description="Section código (e.g. 'III', 'V'); empty for non-gazette sources (REE)")
     subsection: str | None = Field(
         default=None,
-        description="Subsection inside a section (BOA only — 'a', 'b', 'c'). None for BOE.",
+        description="Subsection inside a section (BOA only — 'a', 'b', 'c'). None for BOE/REE.",
     )
-    departamento_codigo: str = Field(description="Departamento código (BOE) or empty (BOA, departamento name is canonical)")
-    departamento: str = Field(description="Departamento full name as the source reports it")
+    departamento_codigo: str = Field(description="Departamento código (BOE); empty for BOA/REE")
+    departamento: str = Field(description="Issuing org / departamento as the source reports it")
     published_at: str = Field(description="ISO date (YYYY-MM-DD)")
     url_pdf: str | None = None
     url_xml: str | None = None

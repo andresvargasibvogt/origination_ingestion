@@ -1,7 +1,10 @@
-"""End-to-end orchestration of one daily run.
+"""End-to-end orchestration of one daily BOE run.
 
-Wires sumario fetch + relevance filter + PDF fetch + robots guard +
-manifest emit + writer. Pure async; the CLI in __main__.py drives it.
+Wires sumario fetch + relevance filter + PDF fetch + robots guard + writer.
+The sumario JSON is fetched in-memory for filtering only — it is NOT
+persisted (we keep just the matching PDFs). In staging mode the manifest is
+built but not written here; the promoter owns the OneLake manifest. Pure
+async; the CLI in __main__.py drives it.
 """
 
 from __future__ import annotations

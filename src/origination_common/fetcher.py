@@ -1,8 +1,12 @@
-"""Async PDF fetcher with bounded concurrency, throttling, and retry.
+"""Async file fetcher with bounded concurrency, throttling, and retry.
+
+Source-agnostic: fetches whatever bytes a scraper asks for — BOE/BOA PDFs,
+REE CSV, etc. (The `PDF` in the class names is historical; it fetches any
+content type.)
 
 Tenacity handles transient 5xx / network errors with exponential backoff.
-The semaphore + per-fetch sleep keep us inside the BOE community-convention
-rate limit (deep-dive §8: ~2s on xml.php; we apply the same to PDFs).
+The semaphore + per-fetch sleep keep us inside each source's politeness rate
+limit (configured per source: e.g. ~2s between BOE PDF fetches).
 """
 
 from __future__ import annotations
@@ -17,7 +21,7 @@ log = structlog.get_logger()
 
 
 class PDFFetchError(Exception):
-    """A PDF fetch failed after all retries."""
+    """A file fetch failed after all retries. (Name is historical — any content type.)"""
 
 
 class PDFFetcher:
@@ -32,7 +36,7 @@ class PDFFetcher:
         self._throttle_secs = throttle_secs
 
     async def fetch(self, url: str) -> bytes:
-        """Fetch a PDF as bytes. Returns the response body on success.
+        """Fetch a file as bytes. Returns the response body on success.
 
         Raises `PDFFetchError` on terminal failure after retries.
         """
