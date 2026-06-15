@@ -1,0 +1,30 @@
+# BOA BACKFILL relevance filter (historical-aware superset).
+#
+# Used ONLY by the backfill Job (--relevance-profile=backfill). The daily Job
+# keeps using relevance.yaml unchanged. This file is a SUPERSET: it must match
+# everything relevance.yaml matches today PLUS the historical department names
+# of the Aragón energy/industry permitting competency, which was renamed each
+# legislature, so a 2019→present backfill is complete.
+#
+# passes_filter ORs across rules, so each historical name is its own rule
+# (section V, subsection b). Names are normalized (case/whitespace) by
+# relevance._norm — genuinely different names each need a rule.
+#
+# SEEDED with the current department so the most-recent (2026) chunk runs with
+# certainty. The historical rules below the marker are filled in (and
+# user-confirmed) from scripts/enumerate_departamentos.py before the pre-2024
+# chunks run — NOT guessed. See docs/operational/backfill-runbook.md.
+
+rules:
+  # Current era (2024–now) — same as the daily filter.
+  - section: "V"
+    subsection: "b"
+    departamento_name: "DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO"
+
+  # --- historical eras (appended after enumeration + confirmation) ---
+  # - section: "V"
+  #   subsection: "b"
+  #   departamento_name: "VICEPRESIDENCIA SEGUNDA DEL GOBIERNO Y DEPARTAMENTO DE ECONOMÍA, EMPLEO E INDUSTRIA"   # 2023–2024 (hypothesis)
+  # - section: "V"
+  #   subsection: "b"
+  #   departamento_name: "DEPARTAMENTO DE INDUSTRIA, COMPETITIVIDAD Y DESARROLLO EMPRESARIAL"                    # 2019–2023 (hypothesis)

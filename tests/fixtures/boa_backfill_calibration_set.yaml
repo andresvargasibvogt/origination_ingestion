@@ -1,0 +1,37 @@
+# Calibration fixture for the BOA BACKFILL filter (relevance.backfill.yaml).
+#
+# Validates the historical-aware superset across the Aragón energy/industry
+# department renames. Current-era cluster is present now (seeded config);
+# historical-era positives (e.g. the 2019–2023 "INDUSTRIA, COMPETITIVIDAD Y
+# DESARROLLO EMPRESARIAL" department) are appended after enumeration +
+# confirmation (see backfill-runbook.md). Each entry: section, subsection,
+# departamento, expected.
+
+positives:
+  # Current era (2024–now) — same department as the daily filter
+  - section: "V"
+    subsection: "b"
+    departamento: "DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO"
+    expected: true
+
+negatives:
+  # V.b but a different department
+  - section: "V"
+    subsection: "b"
+    departamento: "DEPARTAMENTO DE AGRICULTURA, GANADERÍA Y ALIMENTACIÓN"
+    expected: false
+  # Right department, wrong subsection (V.a)
+  - section: "V"
+    subsection: "a"
+    departamento: "DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO"
+    expected: false
+  # Right department, wrong section (III)
+  - section: "III"
+    subsection: null
+    departamento: "DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO"
+    expected: false
+  # A municipal announcement in V.b
+  - section: "V"
+    subsection: "b"
+    departamento: "AYUNTAMIENTO DE ZARAGOZA"
+    expected: false

@@ -1,0 +1,51 @@
+# Calibration fixture for the BOE BACKFILL filter (relevance.backfill.yaml).
+#
+# Validates the historical-aware superset. The superset must match everything
+# the daily filter matches today (current-era clusters below) PLUS the
+# historical ministry eras once those are added (after enumeration +
+# confirmation — see backfill-runbook.md). Each entry: section + departamento
+# {codigo, nombre} + expected.
+#
+# Current-era clusters are present now (seeded config). Historical clusters
+# (e.g. a 2021 MITECO item whose código differs but whose nombre matches the
+# "Transición Ecológica" pattern) are appended when the historical rules land.
+
+positives:
+  # Current era — Section III, MITECO (código 9575)
+  - section: "3"
+    departamento:
+      codigo: "9575"
+      nombre: "MINISTERIO PARA LA TRANSICIÓN ECOLÓGICA Y EL RETO DEMOGRÁFICO"
+    expected: true
+  # Current era — Section III, MPTYMD (código 9593)
+  - section: "3"
+    departamento:
+      codigo: "9593"
+      nombre: "MINISTERIO DE POLÍTICA TERRITORIAL Y MEMORIA DEMOCRÁTICA"
+    expected: true
+  # Current era — Section V.B, MPTYMD (info-pública anuncios)
+  - section: "5B"
+    departamento:
+      codigo: "9593"
+      nombre: "MINISTERIO DE POLÍTICA TERRITORIAL Y MEMORIA DEMOCRÁTICA"
+    expected: true
+
+negatives:
+  # Right section, unrelated ministry
+  - section: "3"
+    departamento:
+      codigo: "6110"
+      nombre: "MINISTERIO DE DEFENSA"
+    expected: false
+  # Right ministry, wrong section (I. Disposiciones generales)
+  - section: "1"
+    departamento:
+      codigo: "9575"
+      nombre: "MINISTERIO PARA LA TRANSICIÓN ECOLÓGICA Y EL RETO DEMOGRÁFICO"
+    expected: false
+  # MITECO not collected in section V (only MPTYMD is)
+  - section: "5B"
+    departamento:
+      codigo: "9575"
+      nombre: "MINISTERIO PARA LA TRANSICIÓN ECOLÓGICA Y EL RETO DEMOGRÁFICO"
+    expected: false
