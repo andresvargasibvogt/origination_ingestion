@@ -26,6 +26,7 @@ from typing import Protocol
 
 import structlog
 from azure.core.credentials import TokenCredential
+from azure.core.exceptions import ResourceNotFoundError
 from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
 from azure.storage.filedatalake import DataLakeServiceClient
 
@@ -108,6 +109,23 @@ class OneLakeWriter:
 
     def write_json(self, lakehouse_path: str, obj: object) -> None:
         self.write_text(lakehouse_path, json.dumps(obj, indent=2, ensure_ascii=False))
+
+    def exists(self, lakehouse_path: str) -> bool:
+        """Return True if a file already exists at `lakehouse_path`.
+
+        Used for idempotent dedup by poll-based sources (e.g. REE): if the
+        target version already landed in OneLake, the ingest can skip the
+        download + re-scan and exit as a clean no-op.
+        """
+        full_path = f"{self._lakehouse_files_prefix}/{lakehouse_path.lstrip('/')}"
+        file_client = self._service.get_file_client(
+            file_system=self._workspace, file_path=full_path
+        )
+        try:
+            file_client.get_file_properties()
+            return True
+        except ResourceNotFoundError:
+            return False
 
 
 class LocalWriter:

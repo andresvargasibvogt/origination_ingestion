@@ -1,7 +1,10 @@
-"""End-to-end orchestration of one daily run.
+"""End-to-end orchestration of one daily BOE run.
 
-Wires sumario fetch + relevance filter + PDF fetch + robots guard +
-manifest emit + writer. Pure async; the CLI in __main__.py drives it.
+Wires sumario fetch + relevance filter + PDF fetch + robots guard + writer.
+The sumario JSON is fetched in-memory for filtering only — it is NOT
+persisted (we keep just the matching PDFs). In staging mode the manifest is
+built but not written here; the promoter owns the OneLake manifest. Pure
+async; the CLI in __main__.py drives it.
 """
 
 from __future__ import annotations
@@ -13,10 +16,9 @@ from typing import Any
 import httpx
 import structlog
 
-from . import paths
-from .config import BOE_BASE_URL, Settings
-from .fetcher import PDFFetchError, PDFFetcher
-from .manifest import (
+from origination_common import paths
+from origination_common.fetcher import PDFFetchError, PDFFetcher
+from origination_common.manifest import (
     FailedItem,
     ItemEntry,
     Manifest,
@@ -24,9 +26,11 @@ from .manifest import (
     now_iso,
     sha256_hex,
 )
-from .onelake import Writer
+from origination_common.onelake import Writer
+from origination_common.robots import RobotsGuard
+
+from .config import BOE_BASE_URL, Settings
 from .relevance import RelevanceConfig, passes_filter
-from .robots import RobotsGuard
 from .sumario import EmptyDay, fetch_sumario, total_items, walk_items
 
 log = structlog.get_logger()

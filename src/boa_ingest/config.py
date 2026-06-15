@@ -1,8 +1,8 @@
 """Configuration via env vars, validated by Pydantic Settings.
 
-Mirrors `boe_ingest.config` for the BOA source. The staging / Fabric /
-managed-identity fields are deliberately the same env-var names so a single
-ACA Job spec env block applies to both BOE and BOA Jobs.
+Mirrors the other source configs for BOA. The staging / Fabric /
+managed-identity fields are deliberately the same env-var names across every
+source so one ACA Job env block applies uniformly.
 
 BOA-specific:
   - JSON endpoint discovered via the SPA's XHR (ADR-004 Step 2 / Option B

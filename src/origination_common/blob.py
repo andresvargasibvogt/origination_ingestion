@@ -1,13 +1,14 @@
 """Azure Blob Storage writer for the staging account (ADR-008).
 
-The ingest Job writes PDFs and the daily sumario here. Per-blob metadata
-captures the per-item context (identifier, section, departamento_codigo,
-etc.) so the promoter can build the OneLake manifest later without
-re-parsing anything.
+Every scraper writes its fetched files here (BOE/BOA PDFs, REE CSV). Per-blob
+metadata captures the per-item context (identifier, section,
+departamento_codigo, etc.) so the promoter can build the OneLake manifest
+later without re-parsing anything.
 
-The path layout INSIDE the container mirrors the OneLake bronze layout:
+The path layout INSIDE the container mirrors the OneLake bronze layout, e.g.
 
-    {container}/bronze/boe/raw/year=YYYY/month=MM/day=DD/{BOE-id}.pdf
+    {container}/bronze/boe/raw/year=YYYY/month=MM/day=DD/{identifier}.pdf   (daily source)
+    {container}/bronze/ree/raw/year=YYYY/month=MM/{filename}.csv            (monthly source)
 
 That way the promoter's "copy from staging to OneLake" is a path-preserving
 copy — no rewriting needed.
@@ -59,9 +60,9 @@ class BlobWriter:
         """Upload `data` to {container}/{path}.
 
         `metadata` becomes Azure blob metadata (key-value strings on the
-        blob). Defender for Storage scans the bytes and writes scan results
-        as blob INDEX TAGS (a different mechanism); we use metadata for our
-        own per-item context.
+        blob). Defender for Storage scans the bytes and writes the scan
+        verdict as a blob INDEX TAG (a different mechanism); we use metadata
+        for our own per-item context.
         """
         client = self._service.get_blob_client(container=self._container, blob=path)
         client.upload_blob(
@@ -107,8 +108,8 @@ def _stringify_metadata(metadata: dict[str, Any]) -> dict[str, str]:
     Spanish names like "Ministerio para la Transición Ecológica" contain
     non-ASCII characters that Azure rejects with InvalidMetadata. We
     ASCII-fold values here ("Transición" -> "Transicion") — the canonical
-    Unicode original is preserved unmodified in sumario.json, which the
-    promoter copies as bytes; only the per-blob metadata label is folded.
+    Unicode original is preserved in the OneLake manifest (written by the
+    promoter as UTF-8 JSON); only the per-blob metadata label is folded.
     """
     result: dict[str, str] = {}
     for k, v in metadata.items():

@@ -15,9 +15,9 @@ from typing import Any
 import httpx
 import structlog
 
-# Reused infrastructure from the BOE package — source-agnostic by design.
-from boe_ingest.fetcher import PDFFetchError, PDFFetcher
-from boe_ingest.manifest import (
+# Reused infrastructure from the shared package — source-agnostic by design.
+from origination_common.fetcher import PDFFetchError, PDFFetcher
+from origination_common.manifest import (
     ATTRIBUTION_BOA,
     SOURCE_BOA,
     FailedItem,
@@ -27,9 +27,9 @@ from boe_ingest.manifest import (
     now_iso,
     sha256_hex,
 )
-from boe_ingest.onelake import Writer
-from boe_ingest.paths import manifest_path, pdf_path
-from boe_ingest.robots import RobotsGuard
+from origination_common.onelake import Writer
+from origination_common.paths import manifest_path, pdf_path
+from origination_common.robots import RobotsGuard
 
 from .config import BOA_BASE_URL, Settings
 from .relevance import RelevanceConfig, passes_filter

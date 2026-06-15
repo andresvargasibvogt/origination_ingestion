@@ -1,18 +1,23 @@
 """Promoter — moves clean blobs from staging to OneLake (ADR-008 Pattern F).
 
-Runs every 5 minutes as a separate ACA Job (`caj-promoter`).
+Source-agnostic. Runs as a scheduled ACA Job (`caj-promoter`, cron
+`15,45 7,8,9 * * 1-6`) shared by every source. Each run scans the whole
+staging `untrusted/` container and promotes what is ready, regardless of which
+source wrote it — the source is read back from each blob's
+`bronze/{source}/raw/...` path.
 
 For each blob in the staging container `untrusted/`:
 
-  1. Read its blob index tag `Malware Scanning scan results`
-     - "No threats found" → copy bytes to OneLake at the same path,
-       upsert the day's manifest in OneLake, then delete the staging blob.
-     - "Malicious"        → move blob to `quarantine/`, emit a security
-       log event. Do not promote.
-     - Missing/pending    → skip; will retry next run.
+  1. Read its blob index tag `Malware Scanning scan result` (written by
+     Defender for Storage on-upload scanning):
+     - "No threats found" → copy bytes to OneLake at the same path, record
+       the item for the partition's manifest, then delete the staging blob.
+     - "Malicious"        → copy blob to `quarantine/`, delete from
+       `untrusted/`, emit a security log event. Do not promote.
+     - Missing/pending    → skip; will retry next run (Defender hasn't
+       finished scanning yet).
 
-  2. Sumario JSON (no scan needed but treated the same way) — copied to
-     OneLake when seen.
+After the blob pass, one manifest is upserted per touched partition folder.
 
 The promoter is idempotent and crash-safe:
   - "Copy then delete" semantics: if the promoter dies between copy and
@@ -36,7 +41,7 @@ from azure.core.exceptions import ResourceNotFoundError
 from azure.storage.blob import BlobClient, BlobServiceClient
 from pydantic import TypeAdapter, ValidationError
 
-from .config import load_settings
+from .config import load_common_settings
 from .manifest import (
     FailedItem,
     ItemEntry,
@@ -62,9 +67,15 @@ SCAN_RESULT_TAG = "Malware Scanning scan result"
 SCAN_VERDICT_CLEAN = "No threats found"
 SCAN_VERDICT_MALICIOUS = "Malicious"
 
-# Path pattern: bronze/boe/raw/year=YYYY/month=MM/day=DD/<rest>
+# Path pattern the promoter must read back for EVERY source. The day= segment
+# is optional so the one shared promoter can parse both partition shapes:
+#   daily   sources (BOE, BOA): bronze/{source}/raw/year=YYYY/month=MM/day=DD/<rest>
+#   monthly source  (REE):      bronze/{source}/raw/year=YYYY/month=MM/<rest>
+# BOE/BOA paths still contain day= and match exactly as before — this only
+# ADDS the ability to also recognize REE's month-level path.
 _DATE_PATH_RE = re.compile(
-    r"^bronze/(?P<source>[^/]+)/raw/year=(?P<year>\d{4})/month=(?P<month>\d{2})/day=(?P<day>\d{2})/(?P<rest>.+)$"
+    r"^bronze/(?P<source>[^/]+)/raw/year=(?P<year>\d{4})/month=(?P<month>\d{2})"
+    r"(?:/day=(?P<day>\d{2}))?/(?P<rest>.+)$"
 )
 
 
@@ -89,11 +100,12 @@ def _read_scan_verdict(blob_client: BlobClient) -> str | None:
     return tags.get(SCAN_RESULT_TAG)
 
 
-def _parse_date_path(path: str) -> tuple[str, str, str, str, str] | None:
-    """Split a `bronze/{source}/raw/year=.../day=.../filename` path into parts.
+def _parse_date_path(path: str) -> tuple[str, str, str, str | None, str] | None:
+    """Split a `bronze/{source}/raw/year=.../[day=.../]filename` path into parts.
 
-    Returns (source, year, month, day, filename) or None if the path
-    doesn't match the expected layout.
+    Returns (source, year, month, day, filename) or None if the path doesn't
+    match the expected layout. `day` is None for monthly sources (REE) whose
+    paths have no `day=` segment.
     """
     m = _DATE_PATH_RE.match(path)
     if not m:
@@ -108,8 +120,9 @@ def _blob_metadata_to_item_entry(
     try:
         return ItemEntry(
             identifier=metadata["identifier"],
-            section=metadata["section"],
-            departamento_codigo=metadata["departamento_codigo"],
+            section=metadata.get("section", ""),
+            subsection=metadata.get("subsection"),
+            departamento_codigo=metadata.get("departamento_codigo", ""),
             departamento=metadata.get("departamento", ""),
             published_at=metadata["published_at"],
             url_pdf=metadata.get("url_pdf"),
@@ -192,7 +205,7 @@ def _upsert_manifest(
 
 def main() -> int:
     _configure_logging()
-    settings = load_settings()
+    settings = load_common_settings()
 
     if not settings.stg_account_name:
         log.error("STG_ACCOUNT_NAME not set — promoter cannot run")
@@ -220,10 +233,11 @@ def main() -> int:
         container=settings.stg_container_untrusted,
     )
 
-    # Keyed by (source, date_iso). One promoter run handles BOE + BOA + any
-    # future source by routing each blob to the right manifest based on the
-    # source segment of its bronze/{source}/raw/... path.
-    promoted_by_key: dict[tuple[Source, str], list[ItemEntry]] = defaultdict(list)
+    # Keyed by (source, year, month, day) — one manifest per partition folder.
+    # `day` is None for monthly sources (REE), a string for daily ones (BOE/BOA),
+    # so daily and monthly partitions each get their own manifest. One promoter
+    # run handles every source by routing on the source segment of the path.
+    promoted_by_key: dict[tuple[Source, str, str, str | None], list[ItemEntry]] = defaultdict(list)
     quarantined: int = 0
     pending: int = 0
     skipped: int = 0
@@ -237,14 +251,14 @@ def main() -> int:
             log.warning("path_unparseable", path=path)
             skipped += 1
             continue
-        source_raw, year, month, day, filename = parts
+        source_raw, year, month, day, filename = parts  # day may be None (monthly source)
         try:
             source: Source = _SOURCE_ADAPTER.validate_python(source_raw)
         except ValidationError:
             log.warning("unknown_source", path=path, source=source_raw)
             skipped += 1
             continue
-        date_iso = f"{year}-{month}-{day}"
+        date_iso = f"{year}-{month}-{day}" if day else f"{year}-{month}"
 
         # Sumario JSON: copy as-is, no verdict check needed (it's JSON, not user content)
         if filename == "sumario.json":
@@ -283,15 +297,24 @@ def main() -> int:
         onelake.write_bytes(path, data)
         entry = _blob_metadata_to_item_entry(metadata, path)
         if entry is not None:
-            promoted_by_key[(source, date_iso)].append(entry)
+            promoted_by_key[(source, year, month, day)].append(entry)
         blob_client.delete_blob()
         log.info("blob_promoted", path=path, bytes=len(data))
 
-    # Upsert manifests for any (source, date) we touched
-    for (source, date_iso), new_items in promoted_by_key.items():
-        year, month, day = date_iso.split("-")
-        from datetime import date as _date  # local import to keep module top tidy
-        manifest_rel_path = manifest_path(_date(int(year), int(month), int(day)), source=source)
+    # Upsert one manifest per touched partition. day present → daily manifest
+    # (BOE/BOA); day absent → monthly manifest (REE). The RunInfo.date is the
+    # representative date for the partition (item pub date for monthly).
+    from datetime import date as _date  # local import to keep module top tidy
+    for (source, year, month, day), new_items in promoted_by_key.items():
+        if day is not None:
+            d = _date(int(year), int(month), int(day))
+            granularity = "day"
+            date_iso = d.isoformat()
+        else:
+            d = _date(int(year), int(month), 1)
+            granularity = "month"
+            date_iso = new_items[0].published_at  # true pub date (e.g. 2026-06-04)
+        manifest_rel_path = manifest_path(d, source=source, granularity=granularity)
         existing = _load_existing_manifest(onelake, manifest_rel_path)
         merged = _upsert_manifest(existing, date_iso, new_items, failed=[], source=source)
         onelake.write_text(manifest_rel_path, merged.to_json())
@@ -299,6 +322,7 @@ def main() -> int:
             "manifest_upserted",
             source=source,
             date=date_iso,
+            granularity=granularity,
             items_added=len(new_items),
             items_total=len(merged.items),
         )
