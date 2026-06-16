@@ -1,43 +1,45 @@
 # BOE BACKFILL relevance filter (historical-aware superset).
 #
-# Used ONLY by the backfill Job (--relevance-profile=backfill). The daily Job
-# keeps using relevance.yaml unchanged. This file is a SUPERSET: it must match
-# everything relevance.yaml matches today PLUS the historical ministry names so
-# a 2019→present backfill is complete across every government reorganization.
+# Used ONLY by the backfill Job (--backfill / --relevance-profile=backfill). The
+# daily Job keeps using relevance.yaml unchanged.
 #
-# BOE Rule.matches() passes an item if its departamento código is in
-# departamento_codigos OR any issuer_name_patterns regex matches the departamento
-# nombre. Name patterns are stable across código drift, so they carry the
-# historical eras where the código differs from today's.
+# Built from the COMPLETE observed catalog (scripts/enumerate_departamentos.py
+# boe 2019 2025) and user-confirmed 2026-06-16 to mirror the current daily scope:
+# the renewable lineages only (Transición Ecológica + Política Territorial),
+# NOT the general Industria/Economía ministries.
 #
-# SEEDED with the current taxonomy so the most-recent (2026) chunk runs with
-# certainty. The historical issuer_name_patterns / códigos below the marker are
-# filled in (and user-confirmed) from scripts/enumerate_departamentos.py before
-# the pre-2024 chunks run — NOT guessed. See docs/operational/backfill-runbook.md.
+# The two lineages drifted código but kept a stable name fragment, so the código
+# list covers the current era and the case-insensitive issuer_name_patterns cover
+# every era (BOE Rule.matches() ORs código membership with a regex search on the
+# departamento nombre). Names are UPPERCASE in the sumario, so patterns use the
+# inline (?i) flag.
+#
+#   Transición Ecológica (MITECO, section III renewable resoluciones):
+#     [9566] MINISTERIO PARA LA TRANSICIÓN ECOLÓGICA            2019-01 → 2020-01
+#     [9575] ...Y EL RETO DEMOGRÁFICO                          2020-02 → now (daily)
+#   Política Territorial (Delegaciones del Gobierno, section V info-pública):
+#     [9561] ...POLÍTICA TERRITORIAL Y FUNCIÓN PÚBLICA          2019-01 → 2021-07
+#     [9523] MINISTERIO DE POLÍTICA TERRITORIAL                2021-09 → 2023-11
+#     [9593] ...Y MEMORIA DEMOCRÁTICA                          2023-12 → now (daily)
 
 rules:
 
-  # Section III (Otras disposiciones) — both ministries.
+  # Section III (Otras disposiciones) — both lineages.
   - section: "3"
     departamento_codigos:
       - "9575"   # MITECO (current código)
-      - "9593"   # MPTYMD (current código)
-    # --- historical eras (appended after enumeration + confirmation) ---
-    # issuer_name_patterns:
-    #   - "Transición Ecológica"   # MITECO lineage across código changes
-    #   - "Reto Demográfico"
-    #   - "Política Territorial"   # territorial-ministry lineage
+      - "9593"   # Política Territorial (current código)
+    issuer_name_patterns:
+      - "(?i)transición ecológica"   # MITECO across 9566 → 9575
+      - "(?i)política territorial"   # territorial ministry across 9561 → 9523 → 9593
 
-  # Section V (Anuncios) — territorial ministry (MPTYMD lineage).
+  # Section V (Anuncios) — Política Territorial lineage only (Delegaciones).
   - section: "5A"
-    departamento_codigos:
-      - "9593"   # MPTYMD (current código)
-    # issuer_name_patterns: ["Política Territorial"]   # historical (post-enumeration)
+    departamento_codigos: ["9593"]
+    issuer_name_patterns: ["(?i)política territorial"]
   - section: "5B"
-    departamento_codigos:
-      - "9593"
-    # issuer_name_patterns: ["Política Territorial"]
+    departamento_codigos: ["9593"]
+    issuer_name_patterns: ["(?i)política territorial"]
   - section: "5C"
-    departamento_codigos:
-      - "9593"
-    # issuer_name_patterns: ["Política Territorial"]
+    departamento_codigos: ["9593"]
+    issuer_name_patterns: ["(?i)política territorial"]
