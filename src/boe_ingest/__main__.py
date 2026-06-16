@@ -39,6 +39,7 @@ from .config import Settings, load_settings
 from .orchestrator import ingest_one_day
 from .relevance import RelevanceConfig
 
+log = structlog.get_logger()
 MADRID_TZ = ZoneInfo("Europe/Madrid")
 
 
@@ -167,14 +168,31 @@ async def _run(
     settings: Settings,
     emit_manifest: bool,
 ) -> int:
-    for d in dates:
+    # Single date (daily): let exceptions propagate so the run fails and the
+    # cron retries — behaviour unchanged.
+    if len(dates) == 1:
         await ingest_one_day(
-            d,
-            writer=writer,
-            relevance=relevance,
-            settings=settings,
-            emit_manifest=emit_manifest,
+            dates[0], writer=writer, relevance=relevance,
+            settings=settings, emit_manifest=emit_manifest,
         )
+        return 0
+
+    # Range (backfill): resilient per-day. A transient failure that survives the
+    # fetch-level retries shouldn't abort the whole multi-month chunk; log it,
+    # continue, and report failed days at the end (re-runnable, idempotent).
+    failed: list[str] = []
+    for d in dates:
+        try:
+            await ingest_one_day(
+                d, writer=writer, relevance=relevance,
+                settings=settings, emit_manifest=emit_manifest,
+            )
+        except Exception as exc:  # noqa: BLE001 — backfill must survive a bad day
+            log.warning("backfill_day_failed", date=d.isoformat(), error=str(exc))
+            failed.append(d.isoformat())
+    if failed:
+        log.error("backfill_days_failed", count=len(failed), dates=failed)
+        return 1
     return 0
 
 

@@ -20,6 +20,32 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 log = structlog.get_logger()
 
 
+@retry(
+    retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TransportError)),
+    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=1, min=1, max=30),
+    reraise=True,
+)
+async def get_with_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    headers: dict[str, str] | None = None,
+) -> httpx.Response:
+    """GET `url` with retry on transient transport errors and 5xx.
+
+    Retries `httpx.TransportError` (connection drops, RemoteProtocolError,
+    timeouts) and 5xx — these are the transient failures that otherwise abort a
+    long backfill. 4xx (incl. 404) are NOT retried: they're returned as-is so the
+    caller can interpret them (e.g. BOE 404 → EmptyDay). Used by the sumario
+    fetchers; the per-item PDFFetcher has its own equivalent retry.
+    """
+    resp = await client.get(url, headers=headers or {})
+    if resp.status_code >= 500:
+        resp.raise_for_status()  # raise → retried
+    return resp
+
+
 class PDFFetchError(Exception):
     """A file fetch failed after all retries. (Name is historical — any content type.)"""
 

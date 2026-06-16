@@ -16,6 +16,8 @@ from typing import Any
 import httpx
 import structlog
 
+from origination_common.fetcher import get_with_retry
+
 from .config import SUMARIO_API_PATH
 
 log = structlog.get_logger()
@@ -38,7 +40,7 @@ async def fetch_sumario(client: httpx.AsyncClient, date_yyyymmdd: str) -> dict[s
     url = SUMARIO_API_PATH.format(date=date_yyyymmdd)
     log.info("sumario_fetch_start", url=url)
 
-    resp = await client.get(url, headers={"Accept": "application/json"})
+    resp = await get_with_retry(client, url, headers={"Accept": "application/json"})
     if resp.status_code == 404:
         raise EmptyDay(f"sumario 404 for {date_yyyymmdd}")
     resp.raise_for_status()

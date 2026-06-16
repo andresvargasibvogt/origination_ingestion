@@ -28,6 +28,8 @@ from typing import Any
 import httpx
 import structlog
 
+from origination_common.fetcher import get_with_retry
+
 from .config import BOA_RESPONSE_ENCODING, SUMARIO_URL_TEMPLATE
 
 log = structlog.get_logger()
@@ -59,7 +61,7 @@ async def fetch_sumario(client: httpx.AsyncClient, date_yyyymmdd: str) -> list[d
     url = SUMARIO_URL_TEMPLATE.format(date=date_yyyymmdd)
     log.info("boa_sumario_fetch_start", url=url)
 
-    resp = await client.get(url, headers={"Accept": "application/json,text/plain,*/*"})
+    resp = await get_with_retry(client, url, headers={"Accept": "application/json,text/plain,*/*"})
     resp.raise_for_status()
 
     body = resp.content
