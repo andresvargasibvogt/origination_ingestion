@@ -35,6 +35,20 @@ from .config import BOA_RESPONSE_ENCODING, SUMARIO_URL_TEMPLATE
 log = structlog.get_logger()
 
 
+# BOA's server-built JSON regularly contains backslashes that are not valid JSON
+# escapes — stray legal cross-references like `38/2004" \l "3"`, and UNC-style
+# URLs like `https:\\\aplicaciones.aragon.es\\inabat\\` — which strict json.loads
+# rejects ("Invalid \escape"). BOA uses NO legitimate backslash escapes (quotes
+# are `&quot;`, accents are raw Latin-1, line breaks are `<br/>`; verified zero
+# `\u`/`\"` across 2024-2026 samples), so every backslash in the body is meant to
+# be a literal. We therefore double ALL backslashes — robust to both isolated bad
+# escapes and runs of backslashes (a regex that only doubles "invalid" escapes
+# mis-pairs runs). If BOA ever starts emitting real \u/\n escapes this would need
+# revisiting (calibration / parse would surface it).
+def _sanitize_json_escapes(text: str) -> str:
+    return text.replace("\\", "\\\\")
+
+
 class EmptyDay(Exception):
     """Raised when BOA returns the SPA shell instead of JSON (no publication
     that day — Sundays, holidays, future dates).
@@ -72,7 +86,8 @@ async def fetch_sumario(client: httpx.AsyncClient, date_yyyymmdd: str) -> list[d
         raise EmptyDay(f"BOA returned non-JSON for {date_yyyymmdd} (likely no publication)")
 
     try:
-        items = json.loads(body.decode(BOA_RESPONSE_ENCODING))
+        text = body.decode(BOA_RESPONSE_ENCODING)
+        items = json.loads(_sanitize_json_escapes(text))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise SumarioError(f"Failed to parse BOA sumario for {date_yyyymmdd}: {exc}") from exc
 
