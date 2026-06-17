@@ -26,7 +26,7 @@ from origination_common.manifest import (
     now_iso,
     sha256_hex,
 )
-from origination_common.onelake import Writer
+from origination_common.onelake import Writer, emit_manifest as emit_manifest_helper
 from origination_common.robots import RobotsGuard
 
 from .config import BOE_BASE_URL, Settings
@@ -94,8 +94,7 @@ async def ingest_one_day(
         except EmptyDay:
             log.info("empty_day", date=target_date.isoformat())
             manifest = _empty_manifest(target_date, started)
-            if emit_manifest:
-                writer.write_text(paths.manifest_path(target_date), manifest.to_json())
+            _emit(manifest, paths.manifest_path(target_date), settings, emit_manifest, writer)
             return manifest
 
         sumario_count = total_items(sumario)
@@ -199,8 +198,7 @@ async def ingest_one_day(
         items_robots_blocked=items_robots_blocked,
     )
     manifest = Manifest(run=run, items=items_written)
-    if emit_manifest:
-        writer.write_text(paths.manifest_path(target_date), manifest.to_json())
+    _emit(manifest, paths.manifest_path(target_date), settings, emit_manifest, writer)
     log.info(
         "run_done",
         date=target_date.isoformat(),
@@ -210,6 +208,22 @@ async def ingest_one_day(
         manifest_emitted=emit_manifest,
     )
     return manifest
+
+
+def _emit(manifest: Manifest, manifest_rel_path: str, settings: Settings, emit_manifest: bool, writer: Writer) -> None:
+    """Write the manifest via the writer (local/direct mode) or, for an empty
+    day in staging mode, straight to OneLake so the processed-but-empty day is
+    visible (the promoter only writes manifests for days that have items)."""
+    emit_manifest_helper(
+        writer=writer,
+        manifest_json=manifest.to_json(),
+        has_items=bool(manifest.items),
+        lakehouse_path=manifest_rel_path,
+        emit_via_writer=emit_manifest,
+        workspace_name=settings.fabric_workspace_name,
+        lakehouse_name=settings.fabric_lakehouse_name,
+        azure_client_id=settings.azure_client_id,
+    )
 
 
 def _empty_manifest(target_date: date, started: str) -> Manifest:
