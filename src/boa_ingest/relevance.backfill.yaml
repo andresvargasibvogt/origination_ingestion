@@ -1,30 +1,36 @@
 # BOA BACKFILL relevance filter (historical-aware superset).
 #
-# Used ONLY by the backfill Job (--relevance-profile=backfill). The daily Job
-# keeps using relevance.yaml unchanged. This file is a SUPERSET: it must match
-# everything relevance.yaml matches today PLUS the historical department names
-# of the Aragón energy/industry permitting competency, which was renamed each
-# legislature, so a 2019→present backfill is complete.
+# Used ONLY by the backfill Job (--backfill / --relevance-profile=backfill). The
+# daily Job keeps using relevance.yaml unchanged.
 #
-# passes_filter ORs across rules, so each historical name is its own rule
-# (section V, subsection b). Names are normalized (case/whitespace) by
-# relevance._norm — genuinely different names each need a rule.
+# Built from the COMPLETE observed V.b department catalog
+# (scripts/enumerate_departamentos.py boa 2019 2026) and user-confirmed
+# 2026-06-16: the renewable-energy authority lineage (economía/industria), as it
+# was renamed each Aragón legislature. Excludes the environmental/INAGA lineage
+# (Medio Ambiente / Agricultura) — mirroring the current daily scope.
 #
-# SEEDED with the current department so the most-recent (2026) chunk runs with
-# certainty. The historical rules below the marker are filled in (and
-# user-confirmed) from scripts/enumerate_departamentos.py before the pre-2024
-# chunks run — NOT guessed. See docs/operational/backfill-runbook.md.
+# passes_filter ORs across rules; names are normalized (case/whitespace) by
+# relevance._norm, so exact-name rules are robust to formatting differences.
+#
+#   2019-01 → 2019-02   ECONOMÍA, INDUSTRIA Y EMPLEO
+#   2020-07 → 2023-06   INDUSTRIA, COMPETITIVIDAD Y DESARROLLO EMPRESARIAL
+#   2023-09 → 2024-07   VICEPRESIDENCIA SEGUNDA … ECONOMÍA, EMPLEO E INDUSTRIA
+#   2024-10 → 2026-05   VICEPRESIDENCIA … PRESIDENCIA, ECONOMÍA Y JUSTICIA
+#   2026-06 → now       ECONOMÍA, COMPETITIVIDAD Y EMPLEO   (also the daily filter)
 
 rules:
-  # Current era (2024–now) — same as the daily filter.
+  - section: "V"
+    subsection: "b"
+    departamento_name: "DEPARTAMENTO DE ECONOMÍA, INDUSTRIA Y EMPLEO"
+  - section: "V"
+    subsection: "b"
+    departamento_name: "DEPARTAMENTO DE INDUSTRIA, COMPETITIVIDAD Y DESARROLLO EMPRESARIAL"
+  - section: "V"
+    subsection: "b"
+    departamento_name: "VICEPRESIDENCIA SEGUNDA DEL GOBIERNO Y DEPARTAMENTO DE ECONOMÍA, EMPLEO E INDUSTRIA"
+  - section: "V"
+    subsection: "b"
+    departamento_name: "VICEPRESIDENCIA DEL GOBIERNO Y DEPARTAMENTO DE PRESIDENCIA, ECONOMÍA Y JUSTICIA"
   - section: "V"
     subsection: "b"
     departamento_name: "DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO"
-
-  # --- historical eras (appended after enumeration + confirmation) ---
-  # - section: "V"
-  #   subsection: "b"
-  #   departamento_name: "VICEPRESIDENCIA SEGUNDA DEL GOBIERNO Y DEPARTAMENTO DE ECONOMÍA, EMPLEO E INDUSTRIA"   # 2023–2024 (hypothesis)
-  # - section: "V"
-  #   subsection: "b"
-  #   departamento_name: "DEPARTAMENTO DE INDUSTRIA, COMPETITIVIDAD Y DESARROLLO EMPRESARIAL"                    # 2019–2023 (hypothesis)
