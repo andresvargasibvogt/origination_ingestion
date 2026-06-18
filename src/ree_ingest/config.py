@@ -49,7 +49,7 @@ class Settings(BaseSettings):
 
     # REE posture. ree.es resets the connection without a browser-like UA.
     user_agent: str = Field(
-        default="Mozilla/5.0 (compatible; iBVogt-DataPlatform; +mailto:Andres.Vargas@ibvogt.com)",
+        default="Mozilla/5.0 (compatible; iBVogt-DataPlatform)",
         alias="REE_USER_AGENT",
     )
     http_timeout_secs: float = Field(default=60.0, alias="REE_HTTP_TIMEOUT_SECS", gt=0.0)

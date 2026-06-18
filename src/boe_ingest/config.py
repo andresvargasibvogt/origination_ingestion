@@ -54,9 +54,12 @@ class Settings(BaseSettings):
     # set, we fall back to DefaultAzureCredential (typical for local dev).
     azure_client_id: str | None = Field(default=None, alias="AZURE_CLIENT_ID")
 
-    # BOE source posture (deep-dive §8 conventions).
-    # Override via BOE_USER_AGENT env var if a more identifying string is wanted.
-    user_agent: str = Field(default="boe-ingest/1.0", alias="BOE_USER_AGENT")
+    # BOE source posture (deep-dive §8 conventions). Mozilla-style, good-faith
+    # bot identification, no PII (see backfill-runbook / UA decision).
+    user_agent: str = Field(
+        default="Mozilla/5.0 (compatible; iBVogt-DataPlatform)",
+        alias="BOE_USER_AGENT",
+    )
     sumario_throttle_secs: float = Field(default=1.0, alias="BOE_SUMARIO_THROTTLE_SECS", ge=0.0)
     pdf_throttle_secs: float = Field(default=2.0, alias="BOE_PDF_THROTTLE_SECS", ge=0.0)
     pdf_concurrency: int = Field(default=4, alias="BOE_PDF_CONCURRENCY", ge=1, le=32)

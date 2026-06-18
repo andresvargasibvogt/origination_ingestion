@@ -1,0 +1,61 @@
+# Calibration fixture for the BOE BACKFILL filter (relevance.backfill.yaml).
+#
+# Validates the historical-aware superset. The superset must match everything
+# the daily filter matches today (current-era clusters below) PLUS the
+# historical ministry eras once those are added (after enumeration +
+# confirmation — see backfill-runbook.md). Each entry: section + departamento
+# {codigo, nombre} + expected.
+#
+# Current-era clusters are present now (seeded config). Historical clusters
+# (e.g. a 2021 MITECO item whose código differs but whose nombre matches the
+# "Transición Ecológica" pattern) are appended when the historical rules land.
+
+positives:
+  # --- Current era (2024–now): matches by código (and by name pattern) ---
+  - section: "3"
+    departamento: { codigo: "9575", nombre: "MINISTERIO PARA LA TRANSICIÓN ECOLÓGICA Y EL RETO DEMOGRÁFICO" }
+    expected: true
+  - section: "3"
+    departamento: { codigo: "9593", nombre: "MINISTERIO DE POLÍTICA TERRITORIAL Y MEMORIA DEMOCRÁTICA" }
+    expected: true
+  - section: "5B"
+    departamento: { codigo: "9593", nombre: "MINISTERIO DE POLÍTICA TERRITORIAL Y MEMORIA DEMOCRÁTICA" }
+    expected: true
+
+  # --- Historical eras: código differs, must match by NAME PATTERN ---
+  # MITECO 2019 (código 9566, pre-Reto-Demográfico)
+  - section: "3"
+    departamento: { codigo: "9566", nombre: "MINISTERIO PARA LA TRANSICIÓN ECOLÓGICA" }
+    expected: true
+  # Territorial 2019-2021 (código 9561)
+  - section: "3"
+    departamento: { codigo: "9561", nombre: "MINISTERIO DE POLÍTICA TERRITORIAL Y FUNCIÓN PÚBLICA" }
+    expected: true
+  # Territorial 2021-2023 (código 9523) — section V info-pública
+  - section: "5B"
+    departamento: { codigo: "9523", nombre: "MINISTERIO DE POLÍTICA TERRITORIAL" }
+    expected: true
+
+negatives:
+  # Right section, unrelated ministry
+  - section: "3"
+    departamento: { codigo: "6110", nombre: "MINISTERIO DE DEFENSA" }
+    expected: false
+  # Right ministry, wrong section (I. Disposiciones generales)
+  - section: "1"
+    departamento: { codigo: "9575", nombre: "MINISTERIO PARA LA TRANSICIÓN ECOLÓGICA Y EL RETO DEMOGRÁFICO" }
+    expected: false
+  # MITECO not collected in section V (only Política Territorial is)
+  - section: "5B"
+    departamento: { codigo: "9575", nombre: "MINISTERIO PARA LA TRANSICIÓN ECOLÓGICA Y EL RETO DEMOGRÁFICO" }
+    expected: false
+  # Industria/Economía ministries are OUT of scope (user-confirmed) — every era
+  - section: "3"
+    departamento: { codigo: "5250", nombre: "MINISTERIO DE INDUSTRIA, COMERCIO Y TURISMO" }
+    expected: false
+  - section: "3"
+    departamento: { codigo: "9281", nombre: "MINISTERIO DE ECONOMÍA, INDUSTRIA Y COMPETITIVIDAD" }
+    expected: false
+  - section: "3"
+    departamento: { codigo: "9591", nombre: "MINISTERIO DE INDUSTRIA Y TURISMO" }
+    expected: false

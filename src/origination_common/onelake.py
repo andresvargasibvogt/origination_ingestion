@@ -128,6 +128,39 @@ class OneLakeWriter:
             return False
 
 
+def emit_manifest(
+    *,
+    writer: "Writer",
+    manifest_json: str,
+    has_items: bool,
+    lakehouse_path: str,
+    emit_via_writer: bool,
+    workspace_name: str | None,
+    lakehouse_name: str,
+    azure_client_id: str | None,
+) -> None:
+    """Write a run's manifest to the right place.
+
+    - `emit_via_writer=True` (local / direct-to-OneLake mode): the configured
+      writer owns the manifest — write through it.
+    - staging mode (`emit_via_writer=False`): days WITH items get their manifest
+      from the promoter after Defender clears the blobs, so we write nothing here.
+      But a day with **no items** never reaches the promoter (nothing is staged),
+      so its "ran, found nothing" record would be invisible in OneLake. We
+      therefore write the empty manifest straight to OneLake — it carries only
+      run telemetry (no fetched content), so it needs no Defender DMZ.
+    """
+    if emit_via_writer:
+        writer.write_text(lakehouse_path, manifest_json)
+    elif not has_items and workspace_name:
+        OneLakeWriter(
+            workspace_name=workspace_name,
+            lakehouse_name=lakehouse_name,
+            azure_client_id=azure_client_id,
+        ).write_text(lakehouse_path, manifest_json)
+        log.info("empty_manifest_written", path=lakehouse_path)
+
+
 class LocalWriter:
     """Writes to a local directory. Mirrors the lakehouse layout.
 

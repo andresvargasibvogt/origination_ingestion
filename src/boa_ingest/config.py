@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     # endpoint resets connections without a Mozilla-style UA, so the default
     # below is intentionally browser-like.
     user_agent: str = Field(
-        default="Mozilla/5.0 (compatible; iBVogt-DataPlatform; +mailto:Andres.Vargas@ibvogt.com)",
+        default="Mozilla/5.0 (compatible; iBVogt-DataPlatform)",
         alias="BOA_USER_AGENT",
     )
     sumario_throttle_secs: float = Field(default=1.0, alias="BOA_SUMARIO_THROTTLE_SECS", ge=0.0)

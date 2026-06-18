@@ -39,6 +39,7 @@ from .config import Settings, load_settings
 from .orchestrator import ingest_one_day
 from .relevance import RelevanceConfig
 
+log = structlog.get_logger()
 MADRID_TZ = ZoneInfo("Europe/Madrid")
 
 
@@ -110,7 +111,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--from",
         dest="date_from",
         type=_parse_date,
-        help="Backfill start date (YYYY-MM-DD)",
+        help="Backfill start date (YYYY-MM-DD); requires --to",
+    )
+    group.add_argument(
+        "--backfill",
+        dest="backfill_range",
+        metavar="FROM:TO",
+        help=(
+            "Backfill a date range as a single token, e.g. "
+            "--backfill=2019-01-01:2019-12-31. Implies --relevance-profile=backfill. "
+            "Single-token form so it round-trips cleanly through `az ... --args`."
+        ),
     )
     parser.add_argument(
         "--to",
@@ -123,8 +134,31 @@ def _build_parser() -> argparse.ArgumentParser:
         type=str,
         help="Write to local directory instead of OneLake",
     )
+    parser.add_argument(
+        "--relevance-profile",
+        choices=["current", "backfill"],
+        default="current",
+        help=(
+            "Which relevance config to use. 'current' (default) = the daily "
+            "filter (relevance.yaml); 'backfill' = the historical-aware "
+            "superset (relevance.backfill.yaml). Daily Jobs omit this flag."
+        ),
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
     return parser
+
+
+def _relevance_path(profile: str, settings: Settings) -> Path:
+    """Resolve which relevance YAML to load.
+
+    'current' keeps the existing behaviour (settings path / BOE_RELEVANCE_CONFIG
+    override, defaulting to the packaged relevance.yaml). 'backfill' loads the
+    packaged relevance.backfill.yaml. The daily code path is byte-identical when
+    the flag is absent (profile == 'current').
+    """
+    if profile == "backfill":
+        return Path(__file__).parent / "relevance.backfill.yaml"
+    return settings.relevance_config_path
 
 
 async def _run(
@@ -134,14 +168,31 @@ async def _run(
     settings: Settings,
     emit_manifest: bool,
 ) -> int:
-    for d in dates:
+    # Single date (daily): let exceptions propagate so the run fails and the
+    # cron retries — behaviour unchanged.
+    if len(dates) == 1:
         await ingest_one_day(
-            d,
-            writer=writer,
-            relevance=relevance,
-            settings=settings,
-            emit_manifest=emit_manifest,
+            dates[0], writer=writer, relevance=relevance,
+            settings=settings, emit_manifest=emit_manifest,
         )
+        return 0
+
+    # Range (backfill): resilient per-day. A transient failure that survives the
+    # fetch-level retries shouldn't abort the whole multi-month chunk; log it,
+    # continue, and report failed days at the end (re-runnable, idempotent).
+    failed: list[str] = []
+    for d in dates:
+        try:
+            await ingest_one_day(
+                d, writer=writer, relevance=relevance,
+                settings=settings, emit_manifest=emit_manifest,
+            )
+        except Exception as exc:  # noqa: BLE001 — backfill must survive a bad day
+            log.warning("backfill_day_failed", date=d.isoformat(), error=str(exc))
+            failed.append(d.isoformat())
+    if failed:
+        log.error("backfill_days_failed", count=len(failed), dates=failed)
+        return 1
     return 0
 
 
@@ -150,7 +201,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     _configure_logging(args.verbose)
 
-    if args.date_from is not None:
+    profile = args.relevance_profile
+    if args.backfill_range is not None:
+        try:
+            from_s, to_s = args.backfill_range.split(":")
+        except ValueError:
+            parser.error("--backfill expects FROM:TO, e.g. 2019-01-01:2019-12-31")
+        dates = _date_range(_parse_date(from_s), _parse_date(to_s))
+        profile = "backfill"           # --backfill always uses the historical filter
+    elif args.date_from is not None:
         if args.date_to is None:
             parser.error("--from requires --to")
         dates = _date_range(args.date_from, args.date_to)
@@ -158,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
         dates = [_parse_date(args.date)]
 
     settings = load_settings()
-    relevance = RelevanceConfig.load(settings.relevance_config_path)
+    relevance = RelevanceConfig.load(_relevance_path(profile, settings))
     writer, emit_manifest = _build_writer(args, settings)
 
     return asyncio.run(

@@ -1,0 +1,53 @@
+# Calibration fixture for the BOA BACKFILL filter (relevance.backfill.yaml).
+#
+# Validates the historical-aware superset across the Aragón energy/industry
+# department renames. Current-era cluster is present now (seeded config);
+# historical-era positives (e.g. the 2019–2023 "INDUSTRIA, COMPETITIVIDAD Y
+# DESARROLLO EMPRESARIAL" department) are appended after enumeration +
+# confirmation (see backfill-runbook.md). Each entry: section, subsection,
+# departamento, expected.
+
+positives:
+  # The confirmed energy/industria lineage across eras (user-confirmed 2026-06-16)
+  - section: "V"
+    subsection: "b"
+    departamento: "DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO"            # 2026 (also daily)
+    expected: true
+  - section: "V"
+    subsection: "b"
+    departamento: "DEPARTAMENTO DE ECONOMÍA, INDUSTRIA Y EMPLEO"                 # 2019
+    expected: true
+  - section: "V"
+    subsection: "b"
+    departamento: "DEPARTAMENTO DE INDUSTRIA, COMPETITIVIDAD Y DESARROLLO EMPRESARIAL"   # 2020-2023
+    expected: true
+  - section: "V"
+    subsection: "b"
+    departamento: "VICEPRESIDENCIA SEGUNDA DEL GOBIERNO Y DEPARTAMENTO DE ECONOMÍA, EMPLEO E INDUSTRIA"  # 2023-2024
+    expected: true
+  - section: "V"
+    subsection: "b"
+    departamento: "VICEPRESIDENCIA DEL GOBIERNO Y DEPARTAMENTO DE PRESIDENCIA, ECONOMÍA Y JUSTICIA"      # 2024-2026
+    expected: true
+
+negatives:
+  # V.b but a different department
+  - section: "V"
+    subsection: "b"
+    departamento: "DEPARTAMENTO DE AGRICULTURA, GANADERÍA Y ALIMENTACIÓN"
+    expected: false
+  # Right department, wrong subsection (V.a)
+  - section: "V"
+    subsection: "a"
+    departamento: "DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO"
+    expected: false
+  # Right department, wrong section (III)
+  - section: "III"
+    subsection: null
+    departamento: "DEPARTAMENTO DE ECONOMÍA, COMPETITIVIDAD Y EMPLEO"
+    expected: false
+  # A municipal announcement in V.b
+  - section: "V"
+    subsection: "b"
+    departamento: "AYUNTAMIENTO DE ZARAGOZA"
+    expected: false

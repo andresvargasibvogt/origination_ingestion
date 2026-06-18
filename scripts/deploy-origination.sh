@@ -259,7 +259,9 @@ COMMON_ENV=(
   FABRIC_WORKSPACE_NAME="$WORKSPACE_NAME"
   FABRIC_LAKEHOUSE_NAME="$LAKEHOUSE_NAME"
   AZURE_CLIENT_ID="$UAMI_CLIENT_ID"
-  BOE_USER_AGENT="boe-ingest/1.0"
+  # User-Agent is no longer overridden here — the per-source config default
+  # ("Mozilla/5.0 (compatible; iBVogt-DataPlatform)", no PII) is the single
+  # source of truth. Set {BOE,BOA,REE}_USER_AGENT only to deviate.
   STG_ACCOUNT_NAME="$STG_ACCT"
   STG_CONTAINER_UNTRUSTED="$STG_CONTAINER_UNTRUSTED"
   STG_CONTAINER_QUARANTINE="$STG_CONTAINER_QUARANTINE"
