@@ -55,11 +55,12 @@ Add the historical eras to the calibration fixtures
 `uv run pytest tests/ -q` is green (the backfill test must be 100% across eras;
 the daily tests must stay untouched and green).
 
-Rebuild the image so the updated YAML ships in it:
+Rebuild the image so the updated YAML ships in it (the Jobs run the
+`boe-ingest:latest` tag — same unified image for every source + the promoter):
 
 ```bash
-az acr build --registry acrorigination --image origination-ingest:latest \
-  --file containers/origination-ingest.Dockerfile .
+az acr build -r acrorigination -t boe-ingest:latest \
+  -f containers/origination-ingest.Dockerfile .
 ```
 
 ### 3. Run, newest → oldest, one year at a time
@@ -85,10 +86,34 @@ starts the Job, and polls to completion before the next chunk.
   promotes the backfill's staged blobs to OneLake on its next tick. To drain
   immediately instead of waiting, trigger it once:
   `az containerapp job start -n caj-promoter -g rg-origination`.
-- Confirm OneLake landing (per-day partitions + `_manifest.json`), e.g. count
-  PDFs under `bronze/boe/raw/year=YYYY/month=MM/` and check a manifest.
+- Reconcile each year against OneLake with the read-only verifier:
+
+  ```bash
+  FABRIC_WORKSPACE_NAME="Central Data & Integration (DEV)" \
+    uv run python scripts/verify_onelake_year.py boe 2021
+  ```
+
+  It prints landed PDFs, manifest counts (with-items / empty), summed manifest
+  items, and distinct identifiers, and asserts **PDFs == summed manifest items**.
+  A clean year reads `PDFs == summed items?  OK`. (The per-run "written" count in
+  the logs can exceed OneLake by a few when a source lists the same document twice
+  on one day — BOA same-day MLKOB — which collapses to one file; OneLake is ground
+  truth.)
 - The daily Jobs keep running unaffected throughout (different filter, different
   dates).
+
+### 5. Drain order + Defender lag
+
+A backfill year stages hundreds–thousands of blobs at once. Defender scans them
+on upload, but the scan **lags** the upload by minutes, so the first promoter
+tick after a chunk finishes promotes only the already-scanned blobs and logs the
+rest as `scan_pending`. Run the promoter again a few minutes later (or let the
+cron catch the remainder) until a run reports `pending=0` and staging is empty:
+
+```bash
+az storage blob list --account-name storiginationdmz --auth-mode login \
+  --container-name untrusted --prefix "bronze/boe/raw/year=2021" --query "length(@)" -o tsv
+```
 
 ---
 
@@ -108,6 +133,36 @@ starts the Job, and polls to completion before the next chunk.
 Every chunk is idempotent — re-running a year overwrites the same partitions with
 identical bytes; the manifest upsert merges by identifier. If a year fails
 mid-run, just re-run that year: `scripts/backfill.sh boe 2022 2022`.
+
+## Troubleshooting: PDFs present but manifests missing
+
+Symptom: `verify_onelake_year.py` reports `MISMATCH` with **more PDFs than summed
+manifest items**, or the manifests prefix for a year is missing entirely
+(`_manifests/year=YYYY/` → PathNotFound).
+
+Root cause (fixed 2026-06): the promoter used to delete each staged blob in the
+blob-copy pass and write manifests in a **separate** later pass from an in-memory
+dict. A promoter run that copied the PDFs and drained staging but then died
+before the manifest pass left the PDFs in OneLake with **no manifest** — and
+because staging was already empty, a re-run had nothing to promote and never
+rebuilt the manifests. This is how BOE 2021 (whole year) and BOE 2020 (Dec 23–31
+tail) ended up PDF-complete but manifest-less.
+
+The fix makes the promoter delete a staged blob **only after its partition
+manifest is durably written** (copy → write manifest → delete). Guarded by
+`tests/test_promoter_crash_safety.py`.
+
+Remediation when you find this on already-landed data (manifests are gone and
+staging is empty, so they can't be rebuilt from staging — you must re-stage):
+
+```bash
+# Re-ingest just the affected range; PDFs re-stage (identical bytes), and the
+# fixed promoter rebuilds the missing manifests on its next ticks.
+az containerapp job update -n caj-boe-backfill -g rg-origination \
+  --args="--backfill=2020-12-23:2020-12-31" -o none
+az containerapp job start  -n caj-boe-backfill -g rg-origination
+# …then run the promoter until pending=0, and re-verify.
+```
 
 ## Volume (observed)
 

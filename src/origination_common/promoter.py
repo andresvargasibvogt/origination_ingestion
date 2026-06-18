@@ -19,12 +19,24 @@ For each blob in the staging container `untrusted/`:
 
 After the blob pass, one manifest is upserted per touched partition folder.
 
-The promoter is idempotent and crash-safe:
-  - "Copy then delete" semantics: if the promoter dies between copy and
-    delete, the next run sees the blob still in staging, re-copies
-    (overwriting with identical bytes), and tries the delete again.
+The promoter is idempotent and crash-safe. The load-bearing invariant is
+**a staged blob is deleted only AFTER its partition manifest is durably
+written to OneLake** (copy → write manifest → delete, never copy → delete →
+write manifest):
+  - If the promoter dies before a partition's manifest is written, every blob
+    for that partition is still in staging, so the next run re-copies
+    (identical bytes), rebuilds the manifest, and deletes.
+  - If it dies after the manifest write but before the delete, the next run
+    re-copies (identical bytes), re-upserts the manifest (merge by
+    `identifier` → no-op), and deletes.
   - Manifest upserts merge per-item records by `identifier`, so re-running
     after a partial promotion just no-ops the already-promoted items.
+
+(An earlier version deleted each blob in the blob pass and wrote manifests in
+a second pass from an in-memory dict — a crash between the passes copied the
+PDFs and drained staging but lost the manifests permanently, which is exactly
+how BOE 2020/2021 ended up with PDFs and no manifests. The deferred delete
+below closes that window.)
 """
 
 from __future__ import annotations
@@ -238,6 +250,9 @@ def main() -> int:
     # so daily and monthly partitions each get their own manifest. One promoter
     # run handles every source by routing on the source segment of the path.
     promoted_by_key: dict[tuple[Source, str, str, str | None], list[ItemEntry]] = defaultdict(list)
+    # Staged blob paths to delete ONLY after their partition manifest is written
+    # (crash-safety invariant — see module docstring). Keyed the same as above.
+    to_delete_by_key: dict[tuple[Source, str, str, str | None], list[str]] = defaultdict(list)
     quarantined: int = 0
     pending: int = 0
     skipped: int = 0
@@ -291,14 +306,21 @@ def main() -> int:
             skipped += 1
             continue
 
-        # Clean blob → promote to OneLake
+        # Clean blob → promote to OneLake. Do NOT delete from staging yet: the
+        # delete happens in the manifest pass below, only after the partition's
+        # manifest is durably written (crash-safety invariant).
         metadata = blob_client.get_blob_properties().metadata or {}
         data = blob_client.download_blob().readall()
         onelake.write_bytes(path, data)
         entry = _blob_metadata_to_item_entry(metadata, path)
         if entry is not None:
             promoted_by_key[(source, year, month, day)].append(entry)
-        blob_client.delete_blob()
+            to_delete_by_key[(source, year, month, day)].append(path)
+        else:
+            # Bad metadata: the PDF is promoted but can't be catalogued, so it
+            # will never enter a manifest. Delete it now to avoid an infinite
+            # re-copy loop (it's already safely in OneLake).
+            blob_client.delete_blob()
         log.info("blob_promoted", path=path, bytes=len(data))
 
     # Upsert one manifest per touched partition. day present → daily manifest
@@ -326,6 +348,9 @@ def main() -> int:
             items_added=len(new_items),
             items_total=len(merged.items),
         )
+        # Manifest is durable → now safe to drain this partition's staged blobs.
+        for staged_path in to_delete_by_key[(source, year, month, day)]:
+            untrusted.get_blob_client(staged_path).delete_blob()
 
     log.info(
         "promoter_run_done",
