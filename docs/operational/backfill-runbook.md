@@ -55,11 +55,14 @@ Add the historical eras to the calibration fixtures
 `uv run pytest tests/ -q` is green (the backfill test must be 100% across eras;
 the daily tests must stay untouched and green).
 
-Rebuild the image so the updated YAML ships in it (the Jobs run the
-`boe-ingest:latest` tag — same unified image for every source + the promoter):
+Rebuild the image so the updated YAML ships in it. The Jobs run the
+`origination-ingest:latest` tag — one unified image for every source + the
+promoter. (Build exactly this repo: a stale `boe-ingest` name from the BOE-only
+era exists in ACR but no Job references it, so building that silently no-ops the
+deploy.)
 
 ```bash
-az acr build -r acrorigination -t boe-ingest:latest \
+az acr build -r acrorigination -t origination-ingest:latest \
   -f containers/origination-ingest.Dockerfile .
 ```
 

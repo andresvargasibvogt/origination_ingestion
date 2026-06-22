@@ -17,7 +17,7 @@ import httpx
 import structlog
 
 from origination_common import paths
-from origination_common.fetcher import PDFFetchError, PDFFetcher
+from origination_common.fetcher import PDFFetcher, PDFFetchError
 from origination_common.manifest import (
     FailedItem,
     ItemEntry,
@@ -26,7 +26,8 @@ from origination_common.manifest import (
     now_iso,
     sha256_hex,
 )
-from origination_common.onelake import Writer, emit_manifest as emit_manifest_helper
+from origination_common.onelake import Writer
+from origination_common.onelake import emit_manifest as emit_manifest_helper
 from origination_common.robots import RobotsGuard
 
 from .config import BOE_BASE_URL, Settings

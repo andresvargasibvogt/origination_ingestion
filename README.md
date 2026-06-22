@@ -5,8 +5,9 @@ Daily ingestion of the renewable-energy slice of Spanish public sources into Mic
 - **BOE** (Boletín Oficial del Estado) — state-competence projects (>50 MW peninsular, multi-CCAA, offshore).
 - **BOA** (Boletín Oficial de Aragón) — Aragón regional-competence projects (≤50 MW within the CCAA).
 - **REE** (Red Eléctrica de España) — monthly transport-grid access-capacity CSV ("Capacidad de acceso de generación … en los nudos de la red de transporte").
+- **Endesa** (e-distribución) — monthly distribution-grid generation-capacity CSV ("Capacidad de generación en e-distribución").
 
-All loaders run as Azure Container Apps Jobs in North Europe on a single shared image (`origination-ingest`), write to OneLake via managed identity through a Defender-scanned staging account, and feed downstream extraction / linking tools that live outside this repo. Source-agnostic infrastructure lives in `src/origination_common/`; each source package (`boe_ingest`, `boa_ingest`, `ree_ingest`) owns only its discovery + filter + orchestration.
+All loaders run as Azure Container Apps Jobs in North Europe on a single shared image (`origination-ingest`), write to OneLake via managed identity through a Defender-scanned staging account, and feed downstream extraction / linking tools that live outside this repo. Source-agnostic infrastructure lives in `src/origination_common/`; each source package (`boe_ingest`, `boa_ingest`, `ree_ingest`, `endesa_ingest`) owns only its discovery + filter + orchestration.
 
 **New here?** Start with [how the pipeline works](docs/architecture/how-the-pipeline-works.md) — a detailed walkthrough of the scrapers and the promoter job.
 

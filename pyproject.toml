@@ -29,18 +29,16 @@ dev = [
 boe-ingest = "boe_ingest.__main__:main"
 boa-ingest = "boa_ingest.__main__:main"
 ree-ingest = "ree_ingest.__main__:main"
-# Source-agnostic promoter (staging → OneLake). Canonical name is `promoter`;
-# `boe-promoter` kept as a transitional alias so the running caj-promoter Job
-# doesn't break during the cutover to the unified image.
+endesa-ingest = "endesa_ingest.__main__:main"
+# Source-agnostic promoter (staging → OneLake), shared by every source.
 promoter = "origination_common.promoter:main"
-boe-promoter = "origination_common.promoter:main"
 
 [build-system]
 requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/origination_common", "src/boe_ingest", "src/boa_ingest", "src/ree_ingest"]
+packages = ["src/origination_common", "src/boe_ingest", "src/boa_ingest", "src/ree_ingest", "src/endesa_ingest"]
 
 [dependency-groups]
 dev = [

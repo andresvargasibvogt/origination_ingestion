@@ -20,8 +20,8 @@ of the design (ADR-008, "Pattern F").
  public source ─►│  caj-{source}-daily  (ACA Job)    │        │  caj-promoter  (ACA Job)          │
  (boe.es,        │   discover → filter → fetch files │        │   for each staged blob:           │
   boa.aragon.es, │   ↓                                │        │     read Defender scan tag        │
-  ree.es)        │   write each file to STAGING       │        │     clean   → copy to OneLake     │
-                 │   with per-item blob metadata      │        │     bad     → move to quarantine  │
+  ree.es,        │   write each file to STAGING       │        │     clean   → copy to OneLake     │
+  edistribucion) │   with per-item blob metadata      │        │     bad     → move to quarantine  │
                  └──────────────┬─────────────────────┘        │     pending → skip, retry later   │
                                 │                              │   then upsert one manifest/partition
                                 ▼                              └───────────────┬──────────────────┘
@@ -62,12 +62,13 @@ src/
   boe_ingest/           BOE-specific: config, sumario, relevance(.yaml), orchestrator, __main__
   boa_ingest/           BOA-specific: config, sumario, relevance(.yaml), orchestrator, __main__
   ree_ingest/           REE-specific: config, discover, orchestrator, __main__
+  endesa_ingest/        Endesa (e-distribución)-specific: config, discover, orchestrator, __main__
 ```
 
-All three source packages import their plumbing from `origination_common`; none
+All four source packages import their plumbing from `origination_common`; none
 imports another source. One container image (`origination-ingest:latest`) holds
 all of it. Each ACA Job runs the same image with a different `command`
-(`boe-ingest`, `boa-ingest`, `ree-ingest`, `promoter`).
+(`boe-ingest`, `boa-ingest`, `ree-ingest`, `endesa-ingest`, `promoter`).
 
 ---
 
@@ -80,20 +81,20 @@ fetch + write are shared.
 
 ### 3.1 What differs per source
 
-| | **BOE** (`boe_ingest`) | **BOA** (`boa_ingest`) | **REE** (`ree_ingest`) |
-|---|---|---|---|
-| Cadence | Daily | Daily | Monthly (uncertain day) |
-| Discovery | Open-data **JSON API** `…/datosabiertos/api/boe/sumario/{YYYYMMDD}` | **JSON endpoint** the SPA uses: `BRSCGI?…SEC=OPENDATABOAJSONAPP&…&PUBL-C=YYYYMMDD` (omit `SECC-C=BOA` or it returns the SPA shell) | **Landing-page HTML**; regex-extract the `*_GRT_generacion.csv` href |
-| What we want | Renewable dispositions | Renewable anuncios | The whole capacity CSV |
-| Filter | section + departamento código (`relevance.yaml`) | section + subsection + departamento name (`relevance.yaml`) | none — one file |
-| Files fetched | many PDFs | many PDFs (`BRSCGI?CMD=VEROBJ&MLKOB=…`) | one CSV |
-| Dedup | path = the day (idempotent overwrite) | path = the day | **OneLake existence check** (poll daily, collect once) |
-| OneLake partition | `…/year=/month=/day=/` | `…/year=/month=/day=/` | `…/year=/month=/` (no `day=`) |
+| | **BOE** (`boe_ingest`) | **BOA** (`boa_ingest`) | **REE** (`ree_ingest`) | **Endesa** (`endesa_ingest`) |
+|---|---|---|---|---|
+| Cadence | Daily | Daily | Monthly (uncertain day) | Monthly (uncertain day) |
+| Discovery | Open-data **JSON API** `…/datosabiertos/api/boe/sumario/{YYYYMMDD}` | **JSON endpoint** the SPA uses: `BRSCGI?…SEC=OPENDATABOAJSONAPP&…&PUBL-C=YYYYMMDD` (omit `SECC-C=BOA` or it returns the SPA shell) | **Landing-page HTML**; regex-extract the `*_GRT_generacion.csv` href | **Landing-page HTML**; select the "e-distribución" series link **by text** (excludes the parallel "EASA" series), tolerant of the `generación`/`generacion` accent drift |
+| What we want | Renewable dispositions | Renewable anuncios | The whole capacity CSV | The monthly capacity CSV |
+| Filter | section + departamento código (`relevance.yaml`) | section + subsection + departamento name (`relevance.yaml`) | none — one file | none — one file (the e-distribución series, not EASA) |
+| Files fetched | many PDFs | many PDFs (`BRSCGI?CMD=VEROBJ&MLKOB=…`) | one CSV | one CSV |
+| Dedup | path = the day (idempotent overwrite) | path = the day | **OneLake existence check** (poll daily, collect once) | **OneLake existence check** (poll daily, collect once) |
+| OneLake partition | `…/year=/month=/day=/` | `…/year=/month=/day=/` | `…/year=/month=/` (no `day=`) | `…/year=/month=/` (no `day=`) |
 
 ### 3.2 The shared ingest flow
 
-Using BOE's `orchestrator.ingest_one_day()` as the model (BOA mirrors it; REE is
-the single-file variant `ingest_latest()`):
+Using BOE's `orchestrator.ingest_one_day()` as the model (BOA mirrors it; REE and
+Endesa are the single-file variant `ingest_latest()`):
 
 1. **Load robots.txt** for the source host into a `RobotsGuard`. Every URL we are
    about to fetch is checked against it; blocked URLs are skipped and counted
@@ -156,6 +157,26 @@ and dedups:
 So ~30 days a month the REE job is a clean no-op; on the day a new file appears
 it lands within a day. Exactly one collection per month, regardless of poll
 frequency. (`--force` bypasses the dedup.)
+
+### 3.5 The Endesa poller specifically
+
+`endesa_ingest` is the same poll-and-dedup pattern as REE (daily check, monthly
+collection, `OneLakeWriter.exists()` dedup, month-level partition under
+`bronze/endesa/raw/`), differing only in discovery. The landing page lists **two
+parallel monthly series** with near-identical filenames:
+
+- **R1299 → "Capacidad de generación en e-distribución"** — the large network
+  dataset, the one we want.
+- **R1026 → "…en EASA"** — a separate, tiny dataset, excluded.
+
+`discover.find_latest_csv()` selects by the **visible link text** (the
+`e-distribuci` marker, excluding `easa`) rather than the internal R-code (a
+stable-but-incidental document id), tolerates the filename accent drift
+(`generación.csv` ↔ `generacion.csv`), ignores the XLSX twin, and raises
+`DiscoveryError` if no matching series link is found — so a page/series change
+surfaces loudly instead of silently collecting nothing. Manually-uploaded files
+already in the folder are untouched (the pipeline writes under `year=/month=/`;
+manual drops sit at the `raw/` root).
 
 ---
 
@@ -223,7 +244,7 @@ filename)`, or `None` if the path doesn't match → log `path_unparseable`,
 count `skipped`, move on.
 
 **b. Validate the source.** The parsed `source` segment is validated against the
-`Source` literal (`"boe" | "boa" | "ree"`) via a Pydantic `TypeAdapter`. An
+`Source` literal (`"boe" | "boa" | "ree" | "endesa"`) via a Pydantic `TypeAdapter`. An
 unknown source → log `unknown_source`, count `skipped`, move on. (This is the
 single source of truth for "is this a source we recognise?" — it widens
 automatically when the `Source` literal grows.)
@@ -304,7 +325,7 @@ has drained reads `promoted: 0, pending: 0` — a pure no-op.
 - It handles both daily and monthly partitions from the same regex.
 - It is scheduled often enough (6×/day: 07:15, 07:45, 08:15, 08:45, 09:15, 09:45
   UTC) to catch each source's upload window after Defender finishes scanning:
-  BOE uploads ~07:00, BOA ~08:00, REE ~09:00.
+  BOE uploads ~07:00, BOA ~08:00, REE + Endesa ~09:00.
 
 ---
 
@@ -317,7 +338,7 @@ read the manifest to discover what landed, rather than listing files.
 ```jsonc
 {
   "schema_version": "1.0",
-  "source": "boe",                       // "boe" | "boa" | "ree"
+  "source": "boe",                       // "boe" | "boa" | "ree" | "endesa"
   "run": {
     "started_at": "...", "ended_at": "...",
     "date": "2026-06-11",
@@ -391,8 +412,10 @@ is how the scrapers are dry-run and calibration-tested.
 | `caj-boe-daily` | `0 7 * * 1-6` | `boe-ingest --date=today` | Mon–Sat (BOE doesn't publish Sun) |
 | `caj-boa-daily` | `0 8 * * 1-6` | `boa-ingest --date=today` | Mon–Sat |
 | `caj-ree-monthly` | `0 9 * * *` | `ree-ingest` | daily check, one collection/month via dedup |
+| `caj-endesa-monthly` | `0 9 * * *` | `endesa-ingest` | daily check, one collection/month via dedup |
 | `caj-promoter` | `15,45 7,8,9 * * 1-6` | `promoter` | 6×/day, drains all sources |
-| `caj-boe-backfill` | manual | `boe-ingest --from=… --to=…` | on-demand history |
+| `caj-boe-backfill` | manual | `boe-ingest --from=… --to=…` | on-demand history (2019→) |
+| `caj-boa-backfill` | manual | `boa-ingest --backfill=FROM:TO` | on-demand history (2019→) |
 
 ACA Job args with spaces don't round-trip, so dates use the `=` form
 (`--date=today`).
@@ -408,7 +431,7 @@ ACA Job args with spaces don't round-trip, so dates use the `=` form
 | Promoter crashes mid-promote | copy-then-delete → next run re-copies identical bytes, retries delete |
 | Source publishes nothing (Sunday/holiday) | scraper logs `empty_day`, writes nothing (or an empty manifest in non-staging mode) |
 | Same file re-ingested | identical path + bytes → idempotent overwrite; manifest merge by `identifier` is a no-op |
-| REE polled but no new release | `ree_version_already_present`, exits without downloading |
+| REE/Endesa polled but no new release | `{source}_version_already_present`, exits without downloading |
 | Bad/missing blob metadata | bytes still promoted; item skipped from manifest with `manifest_metadata_invalid` |
 | Unknown source segment in a path | `unknown_source`, skipped (never promoted to a bogus location) |
 

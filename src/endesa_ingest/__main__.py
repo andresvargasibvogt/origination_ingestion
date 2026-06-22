@@ -1,13 +1,13 @@
-"""CLI entry point for the REE poller.
+"""CLI entry point for the e-distribución poller.
 
-    python -m ree_ingest
+    python -m endesa_ingest
         # Cloud: discover latest CSV, dedup against OneLake, land in staging
-        # if new. Used by the daily-poll caj-ree-monthly Job.
+        # if new. Used by the daily-poll caj-endesa-monthly Job.
 
-    python -m ree_ingest --out-dir ./out
+    python -m endesa_ingest --out-dir ./out
         # Local: download the latest CSV to ./out (no dedup, no Azure creds).
 
-    python -m ree_ingest --force
+    python -m endesa_ingest --force
         # Re-download + re-land even if the version is already in OneLake.
 
 Exit codes:
@@ -87,7 +87,7 @@ def _build_writer_and_reader(
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="ree-ingest", description=__doc__)
+    parser = argparse.ArgumentParser(prog="endesa-ingest", description=__doc__)
     parser.add_argument(
         "--out-dir",
         type=str,

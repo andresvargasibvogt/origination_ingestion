@@ -4,7 +4,7 @@
 #
 # Architecture: ingest writes PDFs to a staging Azure Storage Account
 # (Defender for Storage enabled). A separate promoter ACA Job reads
-# blob index tags every 5 min and promotes clean blobs to OneLake bronze.
+# blob index tags on a morning schedule and promotes clean blobs to OneLake bronze.
 #
 # Idempotent: re-running is safe; each step checks if the resource exists
 # before creating. Run from the repo root:
@@ -38,6 +38,9 @@ ACA_ENV="cae-origination"
 JOB_DAILY="caj-boe-daily"
 JOB_BACKFILL="caj-boe-backfill"
 JOB_PROMOTER="caj-promoter"
+JOB_ENDESA="caj-endesa-monthly"   # e-distribución monthly CSV poller (mirrors caj-ree-monthly)
+# NOTE: caj-boa-daily and caj-ree-monthly were created out-of-band (CLI) and are
+# not yet codified here — this script is BOE + promoter + endesa only for now.
 
 # Staging Blob Storage Account (ADR-008) — globally unique
 STG_ACCT="${STG_ACCT:-storiginationdmz}"        # 3-24 chars, lowercase alphanumeric
@@ -51,8 +54,11 @@ LAKEHOUSE_NAME="lh_esp_origination"
 # Default is the DEV group "Fabric - Central Members (DEV)" (resolved 2026-06-03).
 CONTRIBUTOR_GROUP_OBJECT_ID="${CONTRIBUTOR_GROUP_OBJECT_ID:-a478fcaa-0a99-4c05-aaa1-640f8d2ef5dc}"
 
-# Image config — single image, two entry points (ingest + promoter)
-IMAGE_NAME="boe-ingest"
+# Image config — single unified image, one entry point per source + promoter.
+# NOTE: the repo is `origination-ingest` (matches the Dockerfile name) — this is
+# the image ALL deployed Jobs reference. (`boe-ingest` is a legacy repo from the
+# BOE-only era; nothing uses it. Building the wrong name silently no-ops deploys.)
+IMAGE_NAME="origination-ingest"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 DOCKERFILE="containers/origination-ingest.Dockerfile"
 
@@ -320,7 +326,7 @@ else
   log "✓ Created $JOB_BACKFILL"
 fi
 
-# ─── 11. ACA Job — promoter (every 5 min, ADR-008) ───────────────────────
+# ─── 11. ACA Job — promoter (twice-hourly, mornings UTC; ADR-008) ────────
 log "Step 11: ACA Job $JOB_PROMOTER"
 if az_resource_exists containerapp job show -n "$JOB_PROMOTER" -g "$RG"; then
   log "✓ $JOB_PROMOTER already exists — updating image"
@@ -328,14 +334,13 @@ if az_resource_exists containerapp job show -n "$JOB_PROMOTER" -g "$RG"; then
     -n "$JOB_PROMOTER" -g "$RG" \
     --image "$IMAGE_REF" \
     --replace-env-vars "${COMMON_ENV[@]}" \
-    --command "python" \
-    --args "-m boe_ingest.promoter" >/dev/null
+    --command "promoter" >/dev/null
 else
   az containerapp job create \
     -n "$JOB_PROMOTER" -g "$RG" \
     --environment "$ACA_ENV" \
     --trigger-type Schedule \
-    --cron-expression "*/5 * * * *" \
+    --cron-expression "15,45 7,8,9 * * 1-6" \
     --replica-timeout 600 \
     --replica-retry-limit 1 \
     --parallelism 1 \
@@ -346,9 +351,39 @@ else
     --registry-server "$ACR_NAME.azurecr.io" \
     --registry-identity "$UAMI_ID" \
     --env-vars "${COMMON_ENV[@]}" \
-    --command "python" \
-    --args "-m boe_ingest.promoter" >/dev/null
+    --command "promoter" >/dev/null
   log "✓ Created $JOB_PROMOTER"
+fi
+
+# ─── 11b. ACA Job — e-distribución monthly poller (mirrors caj-ree-monthly) ──
+# Monthly CSV on an uncertain release day → poll daily, dedup against OneLake,
+# land once when a new month appears. Month-level partitions only.
+log "Step 11b: ACA Job $JOB_ENDESA"
+if az_resource_exists containerapp job show -n "$JOB_ENDESA" -g "$RG"; then
+  log "✓ $JOB_ENDESA already exists — updating image"
+  az containerapp job update \
+    -n "$JOB_ENDESA" -g "$RG" \
+    --image "$IMAGE_REF" \
+    --replace-env-vars "${COMMON_ENV[@]}" \
+    --command "endesa-ingest" >/dev/null
+else
+  az containerapp job create \
+    -n "$JOB_ENDESA" -g "$RG" \
+    --environment "$ACA_ENV" \
+    --trigger-type Schedule \
+    --cron-expression "0 9 * * *" \
+    --replica-timeout 1800 \
+    --replica-retry-limit 1 \
+    --parallelism 1 \
+    --replica-completion-count 1 \
+    --image "$IMAGE_REF" \
+    --cpu 0.5 --memory 1Gi \
+    --mi-user-assigned "$UAMI_ID" \
+    --registry-server "$ACR_NAME.azurecr.io" \
+    --registry-identity "$UAMI_ID" \
+    --env-vars "${COMMON_ENV[@]}" \
+    --command "endesa-ingest" >/dev/null
+  log "✓ Created $JOB_ENDESA"
 fi
 
 # ─── 12. Summary + next steps ────────────────────────────────────────────

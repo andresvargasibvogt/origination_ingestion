@@ -130,7 +130,7 @@ class OneLakeWriter:
 
 def emit_manifest(
     *,
-    writer: "Writer",
+    writer: Writer,
     manifest_json: str,
     has_items: bool,
     lakehouse_path: str,

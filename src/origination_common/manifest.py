@@ -12,7 +12,7 @@ Pydantic gives us:
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -22,10 +22,11 @@ SCHEMA_VERSION: Literal["1.0"] = "1.0"
 # Source identifiers used in both the manifest payload and the OneLake bronze
 # path (bronze/{source}/raw/...). Widen this literal when a new source comes
 # online; the promoter discovers the source from each blob's path at runtime.
-Source = Literal["boe", "boa", "ree"]
+Source = Literal["boe", "boa", "ree", "endesa"]
 SOURCE_BOE: Source = "boe"
 SOURCE_BOA: Source = "boa"
 SOURCE_REE: Source = "ree"
+SOURCE_ENDESA: Source = "endesa"  # e-distribución (Endesa) monthly generation-capacity CSV
 
 # Backward-compat alias. Prefer the explicit SOURCE_* constants in new code.
 SOURCE: Source = SOURCE_BOE
@@ -34,6 +35,7 @@ SOURCE: Source = SOURCE_BOE
 ATTRIBUTION_BOE: str = "Fuente de los datos: Agencia Estatal Boletín Oficial del Estado"
 ATTRIBUTION_BOA: str = "Fuente de los datos: Gobierno de Aragón — Boletín Oficial de Aragón"
 ATTRIBUTION_REE: str = "Fuente de los datos: Red Eléctrica de España (REE)"
+ATTRIBUTION_ENDESA: str = "Fuente de los datos: e-distribución (Grupo Endesa)"
 
 # Backward-compat alias for BOE callers.
 ATTRIBUTION: str = ATTRIBUTION_BOE
@@ -42,6 +44,7 @@ _ATTRIBUTION_BY_SOURCE: dict[str, str] = {
     SOURCE_BOE: ATTRIBUTION_BOE,
     SOURCE_BOA: ATTRIBUTION_BOA,
     SOURCE_REE: ATTRIBUTION_REE,
+    SOURCE_ENDESA: ATTRIBUTION_ENDESA,
 }
 
 
@@ -122,7 +125,7 @@ def sha256_hex(data: bytes) -> str:
 def now_iso() -> str:
     """Wall-clock UTC ISO-8601 with seconds precision (e.g. '2026-06-02T07:01:42Z')."""
     return (
-        datetime.now(timezone.utc)
+        datetime.now(UTC)
         .replace(microsecond=0)
         .isoformat()
         .replace("+00:00", "Z")

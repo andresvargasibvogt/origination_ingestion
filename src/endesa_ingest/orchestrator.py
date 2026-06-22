@@ -1,15 +1,15 @@
-"""REE poll-and-land orchestration.
+"""e-distribución poll-and-land orchestration.
 
 One run:
-  1. fetch the landing page → discover the latest capacity CSV + its pub date
+  1. fetch the landing page → discover the latest e-distribución capacity CSV
   2. dedup: if that version already landed in OneLake, no-op (clean log, exit)
   3. otherwise download the CSV → write to staging with per-blob metadata
-  4. build a 1-item manifest (the promoter writes it to OneLake after Defender
-     clears the file, same as BOE/BOA)
+  4. build a 1-item monthly manifest (the promoter writes it to OneLake after
+     Defender clears the file, same as BOE/BOA/REE)
 
-The unit of work is "the latest published file", not "today's file" — REE
-publishes monthly on an uncertain day, so the cron polls daily and this
-orchestrator is a no-op until a genuinely new version appears.
+The unit of work is "the latest published file", not "today's file" —
+e-distribución publishes monthly on an uncertain day, so the cron polls daily
+and this orchestrator is a no-op until a genuinely new version appears.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ import structlog
 
 from origination_common.fetcher import PDFFetcher, PDFFetchError
 from origination_common.manifest import (
-    ATTRIBUTION_REE,
-    SOURCE_REE,
+    ATTRIBUTION_ENDESA,
+    SOURCE_ENDESA,
     FailedItem,
     ItemEntry,
     Manifest,
@@ -32,13 +32,13 @@ from origination_common.onelake import OneLakeWriter, Writer
 from origination_common.paths import manifest_path, partition_dir
 from origination_common.robots import RobotsGuard
 
-from .config import REE_BASE_URL, Settings
+from .config import ENDESA_BASE_URL, Settings
 from .discover import fetch_landing_page, find_latest_csv
 
 log = structlog.get_logger()
 
-# REE reports the issuing org rather than a gazette section/departamento.
-REE_DEPARTAMENTO = "Red Eléctrica de España"
+# e-distribución reports the issuing org rather than a gazette section/departamento.
+ENDESA_DEPARTAMENTO = "e-distribución (Grupo Endesa)"
 
 
 async def ingest_latest(
@@ -49,7 +49,7 @@ async def ingest_latest(
     emit_manifest: bool = True,
     force: bool = False,
 ) -> Manifest:
-    """Discover + land the latest REE capacity CSV. Idempotent (deduped).
+    """Discover + land the latest e-distribución capacity CSV. Idempotent (deduped).
 
     `onelake_reader`, when supplied, is used for the dedup existence check:
     if the target version already exists in OneLake, we skip the download
@@ -57,13 +57,13 @@ async def ingest_latest(
     the check (re-download + re-land).
     """
     started = now_iso()
-    log.info("ree_run_start")
+    log.info("endesa_run_start")
 
-    robots = RobotsGuard(base_url=REE_BASE_URL, user_agent=settings.user_agent)
+    robots = RobotsGuard(base_url=ENDESA_BASE_URL, user_agent=settings.user_agent)
     robots.load()
 
     async with httpx.AsyncClient(
-        base_url=REE_BASE_URL,
+        base_url=ENDESA_BASE_URL,
         headers={"User-Agent": settings.user_agent},
         timeout=settings.http_timeout_secs,
         http2=True,
@@ -73,18 +73,18 @@ async def ingest_latest(
         html = await fetch_landing_page(client)
         latest = find_latest_csv(html)
 
-        # REE is monthly → month-level partition (no day= folder).
+        # Monthly → month-level partition (no day= folder).
         target_rel_path = (
-            f"{partition_dir(latest.published_at, source=SOURCE_REE, granularity='month')}"
+            f"{partition_dir(latest.published_at, source=SOURCE_ENDESA, granularity='month')}"
             f"/{latest.filename}"
         )
         identifier = latest.filename.removesuffix(".csv")
-        full_url = f"{REE_BASE_URL}{latest.url_path}"
+        full_url = f"{ENDESA_BASE_URL}{latest.url_path}"
 
         # 2. Dedup — has this version already landed in OneLake?
         if not force and onelake_reader is not None and onelake_reader.exists(target_rel_path):
             log.info(
-                "ree_version_already_present",
+                "endesa_version_already_present",
                 filename=latest.filename,
                 published_at=latest.published_at.isoformat(),
                 path=target_rel_path,
@@ -113,7 +113,7 @@ async def ingest_latest(
                     "identifier": identifier,
                     "section": "",
                     "departamento_codigo": "",
-                    "departamento": REE_DEPARTAMENTO,
+                    "departamento": ENDESA_DEPARTAMENTO,
                     "published_at": latest.published_at.isoformat(),
                     "sha256": sha,
                     "size_bytes": str(len(data)),
@@ -126,7 +126,7 @@ async def ingest_latest(
                         section="",
                         subsection=None,
                         departamento_codigo="",
-                        departamento=REE_DEPARTAMENTO,
+                        departamento=ENDESA_DEPARTAMENTO,
                         published_at=latest.published_at.isoformat(),
                         url_pdf=full_url,
                         url_xml=None,
@@ -148,16 +148,16 @@ async def ingest_latest(
         items_written=len(items_written),
         items_failed=items_failed,
         items_robots_blocked=items_robots_blocked,
-        attribution=ATTRIBUTION_REE,
+        attribution=ATTRIBUTION_ENDESA,
     )
-    manifest = Manifest(source=SOURCE_REE, run=run, items=items_written)
+    manifest = Manifest(source=SOURCE_ENDESA, run=run, items=items_written)
     if emit_manifest:
         writer.write_text(
-            manifest_path(latest.published_at, source=SOURCE_REE, granularity="month"),
+            manifest_path(latest.published_at, source=SOURCE_ENDESA, granularity="month"),
             manifest.to_json(),
         )
     log.info(
-        "ree_run_done",
+        "endesa_run_done",
         published_at=latest.published_at.isoformat(),
         written=run.items_written,
         failed=len(run.items_failed),
@@ -176,6 +176,6 @@ def _unchanged_manifest(published_at_iso: str, started: str) -> Manifest:
         sumario_items_total=1,
         items_filtered_in=0,
         items_written=0,
-        attribution=ATTRIBUTION_REE,
+        attribution=ATTRIBUTION_ENDESA,
     )
-    return Manifest(source=SOURCE_REE, run=run, items=[])
+    return Manifest(source=SOURCE_ENDESA, run=run, items=[])
