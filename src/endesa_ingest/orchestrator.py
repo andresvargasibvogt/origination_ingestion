@@ -17,7 +17,7 @@ from __future__ import annotations
 import httpx
 import structlog
 
-from origination_common.fetcher import PDFFetchError, PDFFetcher
+from origination_common.fetcher import PDFFetcher, PDFFetchError
 from origination_common.manifest import (
     ATTRIBUTION_ENDESA,
     SOURCE_ENDESA,

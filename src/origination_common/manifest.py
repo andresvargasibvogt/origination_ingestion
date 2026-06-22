@@ -12,7 +12,7 @@ Pydantic gives us:
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -125,7 +125,7 @@ def sha256_hex(data: bytes) -> str:
 def now_iso() -> str:
     """Wall-clock UTC ISO-8601 with seconds precision (e.g. '2026-06-02T07:01:42Z')."""
     return (
-        datetime.now(timezone.utc)
+        datetime.now(UTC)
         .replace(microsecond=0)
         .isoformat()
         .replace("+00:00", "Z")

@@ -4,7 +4,7 @@
 #
 # Architecture: ingest writes PDFs to a staging Azure Storage Account
 # (Defender for Storage enabled). A separate promoter ACA Job reads
-# blob index tags every 5 min and promotes clean blobs to OneLake bronze.
+# blob index tags on a morning schedule and promotes clean blobs to OneLake bronze.
 #
 # Idempotent: re-running is safe; each step checks if the resource exists
 # before creating. Run from the repo root:
@@ -326,7 +326,7 @@ else
   log "✓ Created $JOB_BACKFILL"
 fi
 
-# ─── 11. ACA Job — promoter (every 5 min, ADR-008) ───────────────────────
+# ─── 11. ACA Job — promoter (twice-hourly, mornings UTC; ADR-008) ────────
 log "Step 11: ACA Job $JOB_PROMOTER"
 if az_resource_exists containerapp job show -n "$JOB_PROMOTER" -g "$RG"; then
   log "✓ $JOB_PROMOTER already exists — updating image"
@@ -334,14 +334,13 @@ if az_resource_exists containerapp job show -n "$JOB_PROMOTER" -g "$RG"; then
     -n "$JOB_PROMOTER" -g "$RG" \
     --image "$IMAGE_REF" \
     --replace-env-vars "${COMMON_ENV[@]}" \
-    --command "python" \
-    --args "-m boe_ingest.promoter" >/dev/null
+    --command "promoter" >/dev/null
 else
   az containerapp job create \
     -n "$JOB_PROMOTER" -g "$RG" \
     --environment "$ACA_ENV" \
     --trigger-type Schedule \
-    --cron-expression "*/5 * * * *" \
+    --cron-expression "15,45 7,8,9 * * 1-6" \
     --replica-timeout 600 \
     --replica-retry-limit 1 \
     --parallelism 1 \
@@ -352,8 +351,7 @@ else
     --registry-server "$ACR_NAME.azurecr.io" \
     --registry-identity "$UAMI_ID" \
     --env-vars "${COMMON_ENV[@]}" \
-    --command "python" \
-    --args "-m boe_ingest.promoter" >/dev/null
+    --command "promoter" >/dev/null
   log "✓ Created $JOB_PROMOTER"
 fi
 

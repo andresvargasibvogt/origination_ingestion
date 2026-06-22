@@ -16,7 +16,7 @@ import httpx
 import structlog
 
 # Reused infrastructure from the shared package — source-agnostic by design.
-from origination_common.fetcher import PDFFetchError, PDFFetcher
+from origination_common.fetcher import PDFFetcher, PDFFetchError
 from origination_common.manifest import (
     ATTRIBUTION_BOA,
     SOURCE_BOA,
@@ -27,7 +27,8 @@ from origination_common.manifest import (
     now_iso,
     sha256_hex,
 )
-from origination_common.onelake import Writer, emit_manifest as emit_manifest_helper
+from origination_common.onelake import Writer
+from origination_common.onelake import emit_manifest as emit_manifest_helper
 from origination_common.paths import manifest_path, pdf_path
 from origination_common.robots import RobotsGuard
 

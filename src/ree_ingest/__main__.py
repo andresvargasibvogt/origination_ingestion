@@ -2,7 +2,7 @@
 
     python -m ree_ingest
         # Cloud: discover latest CSV, dedup against OneLake, land in staging
-        # if new. Used by the daily caj-ree-daily Job.
+        # if new. Used by the daily-poll caj-ree-monthly Job.
 
     python -m ree_ingest --out-dir ./out
         # Local: download the latest CSV to ./out (no dedup, no Azure creds).

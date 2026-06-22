@@ -41,12 +41,10 @@ below closes that window.)
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import sys
 from collections import defaultdict
-from typing import Any
 
 import structlog
 from azure.core.exceptions import ResourceNotFoundError
