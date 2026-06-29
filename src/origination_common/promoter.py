@@ -259,6 +259,13 @@ def main() -> int:
     for blob in untrusted.list_blobs(include=["metadata"]):
         path = blob.name
         blob_client = untrusted.get_blob_client(path)
+        # Annexes (bronze/{source}/annexes/…) are promoted by the dedicated,
+        # streaming annex-promoter (annex_ingest.promoter) — they're large and
+        # use a non-Hive layout this promoter neither understands nor (at
+        # 0.5 GiB, buffering whole blobs) can hold in memory. Skip them here so
+        # one big annex blob can't OOM the shared promoter or spam path_unparseable.
+        if "/annexes/" in path:
+            continue
         parts = _parse_date_path(path)
         if parts is None:
             log.warning("path_unparseable", path=path)

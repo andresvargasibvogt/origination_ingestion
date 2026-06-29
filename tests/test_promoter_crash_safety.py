@@ -173,3 +173,22 @@ def test_crash_during_manifest_write_keeps_that_partitions_blobs(monkeypatch):
     assert day08 <= deleted
     # day=09 manifest crashed → its blobs are still staged for the next run.
     assert not (day09 & deleted)
+
+
+def test_shared_promoter_skips_annex_blobs(monkeypatch):
+    """Annex blobs (bronze/{source}/annexes/…) must be skipped by the SHARED
+    promoter — the dedicated streaming annex-promoter handles them. They must
+    never be copied to OneLake or deleted here (a big annex would OOM this
+    0.5 GiB job, and its non-Hive path has no per-date manifest)."""
+    annex = "bronze/boe/annexes/BOE-B-2026-21237/u1/f1__Anexo.pdf"
+    normal = "bronze/boe/raw/year=2021/month=03/day=08/BOE-A-2021-0001.pdf"
+    deleted: set[str] = set()
+    onelake = FakeOneLake()
+    _patch(monkeypatch, [annex, normal], deleted, onelake)
+
+    rc = promoter.main()
+    assert rc == 0
+    # The normal gazette PDF still promotes + drains.
+    assert normal in onelake.written and normal in deleted
+    # The annex blob is left completely untouched by the shared promoter.
+    assert annex not in onelake.written and annex not in deleted
