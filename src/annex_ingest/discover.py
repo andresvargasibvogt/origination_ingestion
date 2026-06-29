@@ -13,6 +13,7 @@ Two enumeration modes:
 
 from __future__ import annotations
 
+import html
 import re
 from datetime import date
 
@@ -24,8 +25,11 @@ from origination_common.fetcher import get_with_retry
 from origination_common.manifest import Manifest
 from origination_common.paths import manifest_path
 
+from . import proyectos_ci
 from .classify import DEFAULT_MIN_MW, classify, should_fetch_annexes
 from .config import BOE_XML_PATH
+
+_TITLE_RE = re.compile(r"<titulo>(.*?)</titulo>", re.S)
 
 log = structlog.get_logger()
 
@@ -47,13 +51,17 @@ class AnnouncementWork(BaseModel):
     announcement_external_id: str
     url_xml: str
     published_at: date
-    sending_uuids: tuple[str, ...]   # almacen sendings, de-duplicated, order preserved
+    sending_uuids: tuple[str, ...]   # almacen sendings (direct or portal-resolved)
     # Project-type gate (the BOE pipeline is unchanged; this only decides whether
     # to DOWNLOAD this announcement's annexes).
     types: tuple[str, ...] = ()
     max_mw: float | None = None
     fetch_annexes: bool = True
     gate_reason: str = "filter_disabled"
+    # proyectos-ci portal resolution (when the announcement has no direct almacen
+    # link but links a Delegación del Gobierno portal).
+    portal_status: str | None = None   # resolved / office_only / unresolved / None
+    project_url: str | None = None
 
 
 def extract_sending_uuids(xml_text: str) -> list[str]:
@@ -92,10 +100,12 @@ async def discover_one(
     fallback_date: date,
     apply_filter: bool = True,
     min_mw: float = DEFAULT_MIN_MW,
+    portal_cache: dict[str, str | None] | None = None,
 ) -> AnnouncementWork:
-    """Fetch one announcement's XML, extract its annex sending UUIDs, and apply
-    the project-type/MW gate (storage/wind/data-center ≥ min_mw → fetch;
-    solar-only / out-of-scope / below-threshold → skip the download)."""
+    """Fetch one announcement's XML, extract its annex sending UUIDs, apply the
+    project-type/MW gate, and — when there's no direct almacen link but a
+    Delegación del Gobierno 'proyectos-ci' portal link — resolve the portal hop
+    to the underlying almacen sending(s)."""
     resp = await get_with_retry(client, url_xml)
     resp.raise_for_status()
     xml_text = resp.text
@@ -110,9 +120,30 @@ async def discover_one(
         fetch, reason = should_fetch_annexes(cls, min_mw=min_mw)
     else:
         fetch, reason = True, "filter_disabled"
+
+    portal_status: str | None = None
+    project_url: str | None = None
+    # Only resolve the portal when in-scope and there's no direct almacen link —
+    # avoids portal fetches for out-of-scope/solar-only announcements.
+    if fetch and not uuids:
+        portal = proyectos_ci.extract_portal_url(xml_text)
+        if portal:
+            tm = _TITLE_RE.search(xml_text)
+            title = html.unescape(re.sub(r"<[^>]+>", "", tm.group(1))) if tm else ""
+            res = await proyectos_ci.resolve(
+                client, portal,
+                proyectos_ci.extract_expedientes(title, xml_text),
+                proyectos_ci.name_tokens(title),
+                cache=portal_cache if portal_cache is not None else {},
+            )
+            portal_status, project_url = res.status, res.project_url
+            if res.status == "resolved":
+                uuids = list(res.almacen_uuids)
+
     log.info(
         "annex_discovered", announcement=announcement_id, sendings=len(uuids),
         types=list(cls.types), max_mw=cls.max_mw, fetch_annexes=fetch, gate=reason,
+        portal=portal_status,
     )
     return AnnouncementWork(
         announcement_external_id=announcement_id,
@@ -123,6 +154,8 @@ async def discover_one(
         max_mw=cls.max_mw,
         fetch_annexes=fetch,
         gate_reason=reason,
+        portal_status=portal_status,
+        project_url=project_url,
     )
 
 

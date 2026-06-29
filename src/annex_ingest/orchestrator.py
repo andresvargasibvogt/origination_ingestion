@@ -82,6 +82,14 @@ async def acquire(
                     if work.sending_uuids:
                         write_state(state_io, state_path, state)
                     continue
+                if not work.sending_uuids:
+                    # In-scope, but no almacen link (portal office-only/unresolved) — record for audit.
+                    if work.portal_status in ("office_only", "unresolved"):
+                        _record(state, ann, work.project_url or "", "", "", "", "skipped",
+                                summary, error=f"portal_{work.portal_status}")
+                        summary.skipped += 1
+                        write_state(state_io, state_path, state)
+                    continue
                 for uuid in work.sending_uuids:
                     summary.sendings += 1
                     await _process_sending(

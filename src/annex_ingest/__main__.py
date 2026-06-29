@@ -148,18 +148,25 @@ async def _run(args: argparse.Namespace, settings: Settings) -> int:
         timeout=settings.http_timeout_secs, http2=True, follow_redirects=True,
     ) as boe_client:
         apply_filter = settings.apply_project_filter and not args.no_filter
+        portal_cache: dict[str, str | None] = {}   # regional listings reused across announcements
         for ident, url_xml, fallback in pairs:
             try:
                 work = await discover_one(
                     boe_client, ident, url_xml, fallback_date=fallback,
-                    apply_filter=apply_filter, min_mw=settings.min_mw,
+                    apply_filter=apply_filter, min_mw=settings.min_mw, portal_cache=portal_cache,
                 )
             except httpx.HTTPError as exc:
                 log.warning("annex_discover_failed", announcement=ident, error=str(exc))
                 continue
-            if work.sending_uuids:
+            # Keep announcements with annex sendings (direct or portal-resolved), and
+            # in-scope ones whose portal link couldn't resolve (recorded for audit).
+            if work.sending_uuids or (work.fetch_annexes and work.portal_status in ("office_only", "unresolved")):
                 works.append(work)
-    log.info("annex_discovery_summary", announcements_seen=len(pairs), with_links=len(works))
+    with_sendings = sum(1 for w in works if w.sending_uuids)
+    log.info(
+        "annex_discovery_summary", announcements_seen=len(pairs),
+        with_sendings=with_sendings, portal_unresolved=len(works) - with_sendings,
+    )
     if not works:
         return 0
 
