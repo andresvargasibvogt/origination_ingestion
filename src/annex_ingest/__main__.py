@@ -76,7 +76,15 @@ def _build_writer_reader_state(args: argparse.Namespace, settings: Settings):
     """
     if args.out_dir is not None:
         local = LocalWriter(out_dir=Path(args.out_dir))
-        return local, None, local
+        # Bytes + state stay local, but read the day's BOE manifest from OneLake
+        # when Fabric creds are present, so --date/--backfill can run against the
+        # real ingested files. (exists() dedup is harmless here — nothing local
+        # is in OneLake.) No creds → --announcement-only local mode.
+        reader = (
+            OneLakeWriter(settings.fabric_workspace_name, settings.fabric_lakehouse_name, settings.azure_client_id)
+            if settings.fabric_workspace_name else None
+        )
+        return local, reader, local
     if settings.stg_account_name:
         writer = BlobWriter(
             account_name=settings.stg_account_name,
