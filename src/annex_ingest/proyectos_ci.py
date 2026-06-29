@@ -56,15 +56,30 @@ def extract_portal_url(xml_text: str) -> str | None:
     return m.group(0) if m else None
 
 
+_EXP_PHRASE_RE = re.compile(r"(?:expediente|expte)\.?\s*[:nº]*\s*([A-Za-z]{2,6}[-/][A-Za-z0-9/-]{2,20})", re.I)
+_PROVINCE_RE = re.compile(r"(?:Sub)?[Dd]elegaci[óo]n del Gobierno en\s+([^,.(]{3,40})")
+
+
 def extract_expedientes(title: str, body: str) -> set[str]:
-    """Candidate expediente codes (e.g. FV-168-ALM, PFOT-761, ALM-180)."""
-    cands = {_norm(x) for x in _EXP_RE.findall(_norm(title + " " + body))}
-    # keep code-like tokens with a digit and enough length; drop year/NIF noise
+    """Candidate expediente codes (e.g. FV-168-ALM, PFOT-761, PFot-ALM-180)."""
+    text = _norm(title + " " + body)
+    cands = {_norm(x) for x in _EXP_RE.findall(text)}
+    # also the full compound code right after "expediente"/"Expte" (e.g. PFOT-ALM-180)
+    cands |= {_norm(x) for x in _EXP_PHRASE_RE.findall(title + " " + body)}
     return {c for c in cands if any(ch.isdigit() for ch in c) and len(c) >= 5 and not c.startswith(("B-20", "A-20"))}
 
 
 def name_tokens(title: str) -> set[str]:
     return _tokens(title)
+
+
+def extract_province(title: str, body: str) -> set[str]:
+    """Province/subdelegación tokens from '…del Gobierno en <X>' — used to navigate
+    to the province sub-page (e.g. Albacete → …/informacion-publica/albacete)."""
+    out: set[str] = set()
+    for m in _PROVINCE_RE.finditer(title + " " + body):
+        out |= {w for w in re.findall(r"[A-Z]{4,}", _norm(m.group(1))) if w not in _STOPWORDS}
+    return out
 
 
 class ResolveResult(BaseModel):
@@ -119,12 +134,23 @@ def _by_name(region_anchors: list[tuple[str, str]], names: set[str]) -> tuple[st
     return None
 
 
-def _list_subpage(anchors: list[tuple[str, str]], base_url: str) -> str | None:
-    """A same-region link to the project list (one hop from a landing page)."""
-    for u, t in _region_anchors(anchors, base_url):
-        if re.search(r"proyecto|informaci", t.lower()):
-            return u
-    return None
+def _nav_subpages(anchors: list[tuple[str, str]], base_url: str, province: set[str]) -> list[str]:
+    """Same-region deeper links to follow toward the project list — province
+    sub-pages first (e.g. …/informacion-publica/albacete), then generic
+    proyecto/información links. Excludes the global site nav (other regions)."""
+    base_path = urlparse(base_url).path.rstrip("/")
+    prov: list[str] = []
+    generic: list[str] = []
+    for u, t in anchors:
+        p = urlparse(u).path.rstrip("/")
+        if not (p.startswith(base_path) and len(p) > len(base_path)):
+            continue
+        if province and any(tok in _norm(u + " " + t) for tok in province):
+            prov.append(u)
+        elif re.search(r"proyecto|informaci|renovable|energ", t, re.I):
+            generic.append(u)
+    seen: set[str] = set()
+    return [u for u in prov + generic if not (u in seen or seen.add(u))]
 
 
 def _inline_uuids(page: str, expedientes: set[str]) -> tuple[str, ...]:
@@ -147,11 +173,22 @@ def _inline_uuids(page: str, expedientes: set[str]) -> tuple[str, ...]:
     return ()
 
 
+_MAX_PAGES = 6  # bound the per-announcement crawl (portal → province → project, + slack)
+
+
 async def resolve(
     client: httpx.AsyncClient, portal_url: str, expedientes: set[str], names: set[str],
-    *, cache: dict[str, str | None],
+    province: set[str] | None = None, *, cache: dict[str, str | None],
 ) -> ResolveResult:
-    """Resolve a proyectos-ci portal link to its almacen sending UUID(s)."""
+    """Resolve a proyectos-ci portal link to its almacen sending UUID(s).
+
+    Bounded multi-hop search (≤ _MAX_PAGES fetches): on each page try the inline
+    pattern (almacen by the expediente), then a per-project anchor (follow it to
+    its page), else navigate toward the project list — province sub-pages first.
+    Handles Aragón (project page), Valencia (inline), and Castilla-La Mancha
+    (regional → province sub-page → project page)."""
+    province = province or set()
+
     async def _get(url: str) -> str | None:
         if url not in cache:
             try:
@@ -161,39 +198,39 @@ async def resolve(
                 cache[url] = None
         return cache[url]
 
-    seen: set[str] = set()
+    visited: set[str] = set()
     queue = [portal_url]
-    while queue:
+    office: tuple[str, str] | None = None
+    while queue and len(visited) < _MAX_PAGES:
         url = queue.pop(0)
-        if url in seen:
+        if url in visited:
             continue
-        seen.add(url)
+        visited.add(url)
         page = await _get(url)
         if not page:
             continue
-        # Pattern B (inline, e.g. Valencia): almacen link sits by the expediente on this page.
+        # Pattern B (inline, e.g. Valencia): almacen link sits by the expediente here.
         inline = _inline_uuids(page, expedientes)
         if inline:
             log.info("annex_portal_resolved", project_url=url, matched_by="inline", sendings=len(inline))
             return ResolveResult(status="resolved", almacen_uuids=inline, project_url=url, matched_by="inline")
-        # Pattern A (Aragón): match a per-project anchor, then follow to its page.
         anchors = _anchors(page, url)
+        # Pattern A (Aragón/CLM): match a per-project anchor, then follow to its page.
         match = _by_expediente(anchors, expedientes) or _by_name(_region_anchors(anchors, url), names)
         if match:
             project_url, matched_by = match
             ppage = await _get(project_url)
-            if not ppage:
-                return ResolveResult(status="unresolved", project_url=project_url, matched_by=matched_by)
-            uuids = tuple(dict.fromkeys(_ALMACEN_RE.findall(ppage)))
-            if uuids:
-                log.info("annex_portal_resolved", project_url=project_url, matched_by=matched_by, sendings=len(uuids))
-                return ResolveResult(status="resolved", almacen_uuids=uuids, project_url=project_url, matched_by=matched_by)
-            if "cita previa" in ppage.lower():
-                return ResolveResult(status="office_only", project_url=project_url, matched_by=matched_by)
-            return ResolveResult(status="unresolved", project_url=project_url, matched_by=matched_by)
-        # No match on this page → try one hop to a project-list sub-page.
-        if len(seen) == 1:
-            sub = _list_subpage(anchors, url)
-            if sub:
+            if ppage:
+                uuids = _inline_uuids(ppage, expedientes) or tuple(dict.fromkeys(_ALMACEN_RE.findall(ppage)))
+                if uuids:
+                    log.info("annex_portal_resolved", project_url=project_url, matched_by=matched_by, sendings=len(uuids))
+                    return ResolveResult(status="resolved", almacen_uuids=uuids, project_url=project_url, matched_by=matched_by)
+                if "cita previa" in ppage.lower():
+                    office = office or (project_url, matched_by)
+        # Navigate toward the project list (province sub-pages first).
+        for sub in _nav_subpages(anchors, url, province):
+            if sub not in visited:
                 queue.append(sub)
+    if office:
+        return ResolveResult(status="office_only", project_url=office[0], matched_by=office[1])
     return ResolveResult(status="unresolved")

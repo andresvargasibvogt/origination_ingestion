@@ -16,6 +16,7 @@ from annex_ingest.proyectos_ci import (
     _inline_uuids,
     extract_expedientes,
     extract_portal_url,
+    extract_province,
     resolve,
 )
 
@@ -33,6 +34,17 @@ def test_extract_expedientes_filters_noise() -> None:
     exps = extract_expedientes("proyecto FV-168-ALM Herrera", "Ley 39/2015 inversor SUN2000 NIF B-2026123")
     assert "FV-168-ALM" in exps
     assert "B-2026123"[:5] not in {e[:5] for e in exps} or all(not e.startswith("B-20") for e in exps)
+
+
+def test_extract_expedientes_compound_after_expte() -> None:
+    # "(expediente PFot-ALM-180)" → capture the full compound code.
+    exps = extract_expedientes("Albacete", "examinado el proyecto (expediente PFot-ALM-180) en esta Dependencia")
+    assert "PFOT-ALM-180" in exps
+
+
+def test_extract_province() -> None:
+    assert extract_province("Subdelegación del Gobierno en Albacete, por el que…", "") == {"ALBACETE"}
+    assert "NAVARRA" in extract_province("Delegación del Gobierno en Navarra por el que…", "")
 
 
 def test_by_expediente_matches_in_anchor() -> None:
@@ -93,3 +105,24 @@ async def test_resolve_office_only() -> None:
     async with httpx.AsyncClient() as c:
         res = await resolve(c, portal, {"EXP-77"}, set(), cache={})
     assert res.status == "office_only" and res.almacen_uuids == ()
+
+
+@respx.mock
+async def test_resolve_pattern_c_province_navigation() -> None:
+    """Castilla-La Mancha: regional index → province sub-page (by province name)
+    → project page → almacen."""
+    portal = "https://mptmd.gob.es/portal/delegaciones_gobierno/delegaciones/castillalamancha/proyectos-ci/informacion-publica"
+    province_pg = portal + "/albacete"
+    proj = province_pg + "/AB-PFot-ALM-180-El_Cuco"
+    # regional index: a province link (text just "Albacete") + an unrelated other-region nav link
+    regional = (f'<a href="{province_pg}">Albacete</a>'
+                '<a href="https://mptmd.gob.es/portal/delegaciones_gobierno/delegaciones/andalucia/x">Andalucía</a>')
+    province_html = f'<a href="{proj}">AB-PFot-ALM-180 El Cuco 33,6 MW de potencia</a>'
+    project_html = f'cita previa. Documentación: <a href="https://{ALM}">descargar ZIP</a>'
+    respx.get(portal).mock(return_value=httpx.Response(200, text=regional))
+    respx.get(province_pg).mock(return_value=httpx.Response(200, text=province_html))
+    respx.get(proj).mock(return_value=httpx.Response(200, text=project_html))
+    async with httpx.AsyncClient() as c:
+        res = await resolve(c, portal, {"ALM-180"}, set(), {"ALBACETE"}, cache={})
+    assert res.status == "resolved" and res.almacen_uuids == (UUID,)
+    assert res.project_url.endswith("AB-PFot-ALM-180-El_Cuco")

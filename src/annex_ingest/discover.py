@@ -134,6 +134,7 @@ async def discover_one(
                 client, portal,
                 proyectos_ci.extract_expedientes(title, xml_text),
                 proyectos_ci.name_tokens(title),
+                proyectos_ci.extract_province(title, xml_text),
                 cache=portal_cache if portal_cache is not None else {},
             )
             portal_status, project_url = res.status, res.project_url
