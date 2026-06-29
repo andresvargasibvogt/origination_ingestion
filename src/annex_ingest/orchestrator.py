@@ -40,6 +40,7 @@ def _browse_url(uuid: str) -> str:
 
 class RunSummary(BaseModel):
     announcements: int = 0
+    filtered: int = 0          # announcements skipped by the project-type/MW gate
     sendings: int = 0
     fetched: int = 0
     skipped: int = 0
@@ -71,6 +72,16 @@ async def acquire(
             for work in day_works:
                 summary.announcements += 1
                 ann = work.announcement_external_id
+                if not work.fetch_annexes:
+                    # Project-type/MW gate said no — record why, fetch nothing.
+                    summary.filtered += 1
+                    for uuid in work.sending_uuids:
+                        _record(state, ann, _browse_url(uuid), uuid, "", "", "skipped",
+                                summary, error=f"gate:{work.gate_reason}")
+                        summary.skipped += 1
+                    if work.sending_uuids:
+                        write_state(state_io, state_path, state)
+                    continue
                 for uuid in work.sending_uuids:
                     summary.sendings += 1
                     await _process_sending(
@@ -83,7 +94,7 @@ async def acquire(
             write_state(state_io, state_path, state)
     log.info(
         "annex_run_done",
-        announcements=summary.announcements, sendings=summary.sendings,
+        announcements=summary.announcements, filtered=summary.filtered, sendings=summary.sendings,
         fetched=summary.fetched, skipped=summary.skipped, expired=summary.expired, errors=summary.errors,
     )
     return summary

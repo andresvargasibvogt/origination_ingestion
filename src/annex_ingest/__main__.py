@@ -102,6 +102,8 @@ def _build_parser() -> argparse.ArgumentParser:
     g.add_argument("--announcement", nargs="+", help="One or more BOE announcement ids (ad-hoc/local)")
     p.add_argument("--out-dir", type=str, help="Write to a local directory instead of OneLake (no dedup)")
     p.add_argument("--force", action="store_true", help="Re-fetch even if already landed")
+    p.add_argument("--no-filter", action="store_true",
+                   help="Disable the project-type/MW gate (fetch every announcement's annexes)")
     p.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
     return p
 
@@ -137,9 +139,13 @@ async def _run(args: argparse.Namespace, settings: Settings) -> int:
         base_url=BOE_BASE_URL, headers={"User-Agent": settings.user_agent},
         timeout=settings.http_timeout_secs, http2=True, follow_redirects=True,
     ) as boe_client:
+        apply_filter = settings.apply_project_filter and not args.no_filter
         for ident, url_xml, fallback in pairs:
             try:
-                work = await discover_one(boe_client, ident, url_xml, fallback_date=fallback)
+                work = await discover_one(
+                    boe_client, ident, url_xml, fallback_date=fallback,
+                    apply_filter=apply_filter, min_mw=settings.min_mw,
+                )
             except httpx.HTTPError as exc:
                 log.warning("annex_discover_failed", announcement=ident, error=str(exc))
                 continue

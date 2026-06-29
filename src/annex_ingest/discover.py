@@ -24,6 +24,7 @@ from origination_common.fetcher import get_with_retry
 from origination_common.manifest import Manifest
 from origination_common.paths import manifest_path
 
+from .classify import DEFAULT_MIN_MW, classify, should_fetch_annexes
 from .config import BOE_XML_PATH
 
 log = structlog.get_logger()
@@ -47,6 +48,12 @@ class AnnouncementWork(BaseModel):
     url_xml: str
     published_at: date
     sending_uuids: tuple[str, ...]   # almacen sendings, de-duplicated, order preserved
+    # Project-type gate (the BOE pipeline is unchanged; this only decides whether
+    # to DOWNLOAD this announcement's annexes).
+    types: tuple[str, ...] = ()
+    max_mw: float | None = None
+    fetch_annexes: bool = True
+    gate_reason: str = "filter_disabled"
 
 
 def extract_sending_uuids(xml_text: str) -> list[str]:
@@ -83,8 +90,12 @@ async def discover_one(
     url_xml: str,
     *,
     fallback_date: date,
+    apply_filter: bool = True,
+    min_mw: float = DEFAULT_MIN_MW,
 ) -> AnnouncementWork:
-    """Fetch one announcement's XML and extract its annex sending UUIDs."""
+    """Fetch one announcement's XML, extract its annex sending UUIDs, and apply
+    the project-type/MW gate (storage/wind/data-center ≥ min_mw → fetch;
+    solar-only / out-of-scope / below-threshold → skip the download)."""
     resp = await get_with_retry(client, url_xml)
     resp.raise_for_status()
     xml_text = resp.text
@@ -93,12 +104,25 @@ async def discover_one(
     if legacy:
         log.info("annex_legacy_links_skipped", announcement=announcement_id, count=legacy)
     pub = extract_publication_date(xml_text) or fallback_date
-    log.info("annex_discovered", announcement=announcement_id, sendings=len(uuids))
+
+    cls = classify(xml_text)
+    if apply_filter:
+        fetch, reason = should_fetch_annexes(cls, min_mw=min_mw)
+    else:
+        fetch, reason = True, "filter_disabled"
+    log.info(
+        "annex_discovered", announcement=announcement_id, sendings=len(uuids),
+        types=list(cls.types), max_mw=cls.max_mw, fetch_annexes=fetch, gate=reason,
+    )
     return AnnouncementWork(
         announcement_external_id=announcement_id,
         url_xml=url_xml,
         published_at=pub,
         sending_uuids=tuple(uuids),
+        types=cls.types,
+        max_mw=cls.max_mw,
+        fetch_annexes=fetch,
+        gate_reason=reason,
     )
 
 

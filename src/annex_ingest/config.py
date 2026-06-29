@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     # Default backfill window (≈ the portal link-expiry horizon).
     backfill_lookback_days: int = Field(default=90, alias="ANNEX_BACKFILL_LOOKBACK_DAYS", ge=1)
 
+    # Project-type/MW gate (BOE pipeline unchanged — this only filters which
+    # announcements' annexes we download). Fetch only storage/wind/data-center
+    # ≥ min_mw; solar-only and below-threshold are skipped.
+    apply_project_filter: bool = Field(default=True, alias="ANNEX_APPLY_PROJECT_FILTER")
+    min_mw: float = Field(default=20.0, alias="ANNEX_MIN_MW", ge=0.0)
+
 
 def load_settings() -> Settings:
     """Construct a Settings instance from the current process environment."""
