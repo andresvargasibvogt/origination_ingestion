@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Protocol
 
@@ -127,6 +128,64 @@ class OneLakeWriter:
         except ResourceNotFoundError:
             return False
 
+    def read_text(self, lakehouse_path: str) -> str | None:
+        """Return the file's UTF-8 text, or None if it doesn't exist.
+
+        Used to read a promoted manifest back (annex discovery) and to read the
+        annex JSONL state-manifest for upsert.
+        """
+        full_path = f"{self._lakehouse_files_prefix}/{lakehouse_path.lstrip('/')}"
+        file_client = self._service.get_file_client(file_system=self._workspace, file_path=full_path)
+        try:
+            return file_client.download_file().readall().decode("utf-8")
+        except ResourceNotFoundError:
+            return None
+
+    def _upload_stream(self, lakehouse_path: str, chunks) -> int:
+        """Create the file and append `chunks` in bounded memory; return total bytes.
+
+        Used for large annexes — never buffers the whole file. (Partial-file
+        visibility on a mid-stream crash is acceptable: the JSONL state is the
+        authoritative 'promoted' record and a re-run overwrites identical bytes.
+        A `.partial`→rename hardening can be added later.)
+        """
+        full_path = f"{self._lakehouse_files_prefix}/{lakehouse_path.lstrip('/')}"
+        fc = self._service.get_file_client(file_system=self._workspace, file_path=full_path)
+        fc.create_file()
+        offset = 0
+        for chunk in chunks:
+            if not chunk:
+                continue
+            fc.append_data(chunk, offset=offset, length=len(chunk))
+            offset += len(chunk)
+        fc.flush_data(offset)
+        log.info("onelake_stream_ok", workspace=self._workspace, path=full_path, bytes=offset)
+        return offset
+
+    def put_file(self, lakehouse_path: str, local_fspath: str, metadata: dict[str, str] | None = None,
+                 content_type: str = "application/octet-stream") -> None:
+        """Stream a local file into OneLake (direct mode). Bounded memory."""
+        del metadata, content_type  # OneLake/ADLS has no per-file metadata/content-type hook
+
+        def _iter():
+            with open(local_fspath, "rb") as fh:
+                while True:
+                    b = fh.read(8 * 1024 * 1024)
+                    if not b:
+                        break
+                    yield b
+
+        self._upload_stream(lakehouse_path, _iter())
+
+    def stream_from_blob(self, lakehouse_path: str, blob_client, chunk_bytes: int = 8 * 1024 * 1024) -> int:
+        """Stream a staging blob into OneLake chunk-by-chunk (annex promotion).
+
+        Server-side blob→OneLake copy is not supported across the blob and DFS
+        endpoints, so we stream. Memory stays at ~one chunk.
+        """
+        downloader = blob_client.download_blob(max_concurrency=1)
+        return self._upload_stream(lakehouse_path, downloader.chunks())
+
 
 def emit_manifest(
     *,
@@ -186,3 +245,19 @@ class LocalWriter:
 
     def write_json(self, lakehouse_path: str, obj: object) -> None:
         self.write_text(lakehouse_path, json.dumps(obj, indent=2, ensure_ascii=False))
+
+    def read_text(self, lakehouse_path: str) -> str | None:
+        target = self._out_dir / lakehouse_path
+        return target.read_text(encoding="utf-8") if target.exists() else None
+
+    def put_file(self, lakehouse_path: str, local_fspath: str, metadata: dict[str, str] | None = None,
+                 content_type: str = "application/octet-stream") -> None:
+        del content_type
+        target = self._out_dir / lakehouse_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(local_fspath, "rb") as src, open(target, "wb") as dst:
+            shutil.copyfileobj(src, dst, length=8 * 1024 * 1024)
+        if metadata:
+            sidecar = target.with_suffix(target.suffix + ".meta.json")
+            sidecar.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
+        log.info("local_put_file_ok", path=str(target))

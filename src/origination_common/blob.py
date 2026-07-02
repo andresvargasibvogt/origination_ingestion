@@ -17,6 +17,7 @@ copy — no rewriting needed.
 from __future__ import annotations
 
 import json
+import os
 import unicodedata
 from typing import Any
 
@@ -99,6 +100,35 @@ class BlobWriter:
             json.dumps(obj, indent=2, ensure_ascii=False),
             metadata=metadata,
             content_type="application/json",
+        )
+
+    def put_file(
+        self,
+        path: str,
+        local_fspath: str,
+        metadata: dict[str, str] | None = None,
+        content_type: str = "application/octet-stream",
+    ) -> None:
+        """Stream a local file to {container}/{path} without buffering it in memory.
+
+        Used for large annexes: the Azure SDK chunks the upload from the file
+        handle, so a multi-hundred-MB file never lands in RAM whole.
+        """
+        client = self._service.get_blob_client(container=self._container, blob=path)
+        with open(local_fspath, "rb") as fh:
+            client.upload_blob(
+                fh,
+                overwrite=True,
+                metadata=_stringify_metadata(metadata or {}),
+                content_settings=ContentSettings(content_type=content_type),
+                max_concurrency=2,
+            )
+        log.info(
+            "blob_put_file_ok",
+            account=self._account_name,
+            container=self._container,
+            path=path,
+            bytes=os.path.getsize(local_fspath),
         )
 
 
